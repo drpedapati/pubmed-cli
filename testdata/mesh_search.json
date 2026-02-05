@@ -1,0 +1,16 @@
+{
+    "header": {
+        "type": "esearch",
+        "version": "0.3"
+    },
+    "esearchresult": {
+        "count": "1",
+        "retmax": "20",
+        "retstart": "0",
+        "idlist": [
+            "68005600"
+        ],
+        "translationset": [],
+        "querytranslation": "\"Fragile X Syndrome\"[MeSH Terms]"
+    }
+}

@@ -1,0 +1,16 @@
+{
+    "header": {
+        "type": "elink",
+        "version": "0.3"
+    },
+    "linksets": [
+        {
+            "dbfrom": "pubmed",
+            "ids": [
+                {
+                    "value": "99999999"
+                }
+            ]
+        }
+    ]
+}

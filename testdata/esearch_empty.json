@@ -1,0 +1,14 @@
+{
+    "header": {
+        "type": "esearch",
+        "version": "0.3"
+    },
+    "esearchresult": {
+        "count": "0",
+        "retmax": "20",
+        "retstart": "0",
+        "idlist": [],
+        "translationset": [],
+        "querytranslation": "nonexistent_term_xyz123[All Fields]"
+    }
+}

@@ -1,0 +1,42 @@
+{
+    "header": {
+        "type": "esearch",
+        "version": "0.3"
+    },
+    "esearchresult": {
+        "count": "1234",
+        "retmax": "20",
+        "retstart": "0",
+        "idlist": [
+            "38123456",
+            "37987654",
+            "37876543",
+            "37765432",
+            "37654321",
+            "37543210",
+            "37432109",
+            "37321098",
+            "37210987",
+            "37109876",
+            "36998765",
+            "36887654",
+            "36776543",
+            "36665432",
+            "36554321",
+            "36443210",
+            "36332109",
+            "36221098",
+            "36110987",
+            "35999876"
+        ],
+        "translationset": [
+            {
+                "from": "fragile x syndrome",
+                "to": "\"fragile x syndrome\"[MeSH Terms] OR (\"fragile\"[All Fields] AND \"x\"[All Fields] AND \"syndrome\"[All Fields]) OR \"fragile x syndrome\"[All Fields]"
+            }
+        ],
+        "querytranslation": "\"fragile x syndrome\"[MeSH Terms] OR (\"fragile\"[All Fields] AND \"x\"[All Fields] AND \"syndrome\"[All Fields]) OR \"fragile x syndrome\"[All Fields]",
+        "webenv": "MCID_67890abcdef12345",
+        "querykey": "1"
+    }
+}

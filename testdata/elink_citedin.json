@@ -1,0 +1,39 @@
+{
+    "header": {
+        "type": "elink",
+        "version": "0.3"
+    },
+    "linksets": [
+        {
+            "dbfrom": "pubmed",
+            "ids": [
+                {
+                    "value": "38123456"
+                }
+            ],
+            "linksetdbs": [
+                {
+                    "dbto": "pubmed",
+                    "linkname": "pubmed_pubmed_citedin",
+                    "links": [
+                        {
+                            "id": "39000001"
+                        },
+                        {
+                            "id": "39000002"
+                        },
+                        {
+                            "id": "39000003"
+                        },
+                        {
+                            "id": "38900001"
+                        },
+                        {
+                            "id": "38900002"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

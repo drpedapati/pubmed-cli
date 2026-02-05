@@ -1,0 +1,227 @@
+// Command pubmed provides a CLI for NCBI PubMed E-utilities.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/henrybloomingdale/pubmed-cli/internal/eutils"
+	"github.com/henrybloomingdale/pubmed-cli/internal/mesh"
+	"github.com/henrybloomingdale/pubmed-cli/internal/output"
+	"github.com/spf13/cobra"
+)
+
+var (
+	flagJSON   bool
+	flagLimit  int
+	flagSort   string
+	flagYear   string
+	flagType   string
+	flagAPIKey string
+)
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+var rootCmd = &cobra.Command{
+	Use:   "pubmed",
+	Short: "PubMed E-utilities CLI",
+	Long:  `A command-line interface for searching and retrieving articles from NCBI PubMed using the E-utilities API.`,
+}
+
+func init() {
+	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as structured JSON")
+	rootCmd.PersistentFlags().IntVar(&flagLimit, "limit", 20, "Maximum number of results")
+	rootCmd.PersistentFlags().StringVar(&flagSort, "sort", "", "Sort order: relevance, date, or cited")
+	rootCmd.PersistentFlags().StringVar(&flagYear, "year", "", "Filter by year range (e.g., 2020-2025)")
+	rootCmd.PersistentFlags().StringVar(&flagType, "type", "", "Filter by publication type (review, trial, meta-analysis)")
+	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "NCBI API key (or set NCBI_API_KEY env var)")
+
+	rootCmd.AddCommand(searchCmd)
+	rootCmd.AddCommand(fetchCmd)
+	rootCmd.AddCommand(citedByCmd)
+	rootCmd.AddCommand(referencesCmd)
+	rootCmd.AddCommand(relatedCmd)
+	rootCmd.AddCommand(meshCmd)
+}
+
+func newEutilsClient() *eutils.Client {
+	apiKey := flagAPIKey
+	if apiKey == "" {
+		apiKey = os.Getenv("NCBI_API_KEY")
+	}
+
+	opts := []eutils.Option{}
+	if apiKey != "" {
+		opts = append(opts, eutils.WithAPIKey(apiKey))
+	}
+	return eutils.NewClient(opts...)
+}
+
+func newMeshClient() *mesh.Client {
+	apiKey := flagAPIKey
+	if apiKey == "" {
+		apiKey = os.Getenv("NCBI_API_KEY")
+	}
+	return mesh.NewClient(eutils.DefaultBaseURL, apiKey, eutils.DefaultTool, eutils.DefaultEmail)
+}
+
+func buildQuery(args []string) string {
+	query := strings.Join(args, " ")
+
+	// Add publication type filter
+	if flagType != "" {
+		typeMap := map[string]string{
+			"review":          "review[pt]",
+			"trial":           "clinical trial[pt]",
+			"meta-analysis":   "meta-analysis[pt]",
+			"randomized":      "randomized controlled trial[pt]",
+			"case-report":     "case reports[pt]",
+		}
+		if mapped, ok := typeMap[strings.ToLower(flagType)]; ok {
+			query += " AND " + mapped
+		} else {
+			query += " AND " + flagType + "[pt]"
+		}
+	}
+
+	// Add year filter
+	if flagYear != "" {
+		parts := strings.SplitN(flagYear, "-", 2)
+		if len(parts) == 2 {
+			query += fmt.Sprintf(" AND %s:%s[pdat]", parts[0], parts[1])
+		} else {
+			query += fmt.Sprintf(" AND %s[pdat]", parts[0])
+		}
+	}
+
+	return query
+}
+
+// searchCmd implements the search subcommand.
+var searchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search PubMed with Boolean/MeSH queries",
+	Long:  `Search PubMed using Boolean operators and MeSH terms. Returns PMIDs and result counts.`,
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := newEutilsClient()
+		query := buildQuery(args)
+
+		opts := &eutils.SearchOptions{
+			Limit: flagLimit,
+			Sort:  flagSort,
+		}
+
+		if flagYear != "" {
+			parts := strings.SplitN(flagYear, "-", 2)
+			if len(parts) == 2 {
+				opts.MinDate = parts[0]
+				opts.MaxDate = parts[1]
+			}
+		}
+
+		result, err := client.Search(context.Background(), query, opts)
+		if err != nil {
+			return fmt.Errorf("search failed: %w", err)
+		}
+
+		return output.FormatSearchResult(os.Stdout, result, flagJSON)
+	},
+}
+
+// fetchCmd implements the fetch subcommand.
+var fetchCmd = &cobra.Command{
+	Use:   "fetch <pmid> [pmid...]",
+	Short: "Fetch full article details",
+	Long:  `Retrieve full article details including abstract, authors, DOI, and MeSH terms for one or more PMIDs.`,
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := newEutilsClient()
+
+		articles, err := client.Fetch(context.Background(), args)
+		if err != nil {
+			return fmt.Errorf("fetch failed: %w", err)
+		}
+
+		return output.FormatArticles(os.Stdout, articles, flagJSON)
+	},
+}
+
+// citedByCmd implements the cited-by subcommand.
+var citedByCmd = &cobra.Command{
+	Use:   "cited-by <pmid>",
+	Short: "Find papers that cite this article",
+	Long:  `Find papers in PubMed that cite the given article.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := newEutilsClient()
+
+		result, err := client.CitedBy(context.Background(), args[0])
+		if err != nil {
+			return fmt.Errorf("cited-by lookup failed: %w", err)
+		}
+
+		return output.FormatLinks(os.Stdout, result, "cited-by", flagJSON)
+	},
+}
+
+// referencesCmd implements the references subcommand.
+var referencesCmd = &cobra.Command{
+	Use:   "references <pmid>",
+	Short: "Find papers cited by this article",
+	Long:  `List the references cited by the given article.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := newEutilsClient()
+
+		result, err := client.References(context.Background(), args[0])
+		if err != nil {
+			return fmt.Errorf("references lookup failed: %w", err)
+		}
+
+		return output.FormatLinks(os.Stdout, result, "references", flagJSON)
+	},
+}
+
+// relatedCmd implements the related subcommand.
+var relatedCmd = &cobra.Command{
+	Use:   "related <pmid>",
+	Short: "Find similar articles",
+	Long:  `Find articles similar to the given article, ranked by relevance score.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := newEutilsClient()
+
+		result, err := client.Related(context.Background(), args[0])
+		if err != nil {
+			return fmt.Errorf("related articles lookup failed: %w", err)
+		}
+
+		return output.FormatLinks(os.Stdout, result, "related", flagJSON)
+	},
+}
+
+// meshCmd implements the mesh subcommand.
+var meshCmd = &cobra.Command{
+	Use:   "mesh <term>",
+	Short: "Look up a MeSH term",
+	Long:  `Search for a MeSH (Medical Subject Headings) term and display its record including tree numbers, scope note, and synonyms.`,
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := newMeshClient()
+		term := strings.Join(args, " ")
+
+		record, err := client.Lookup(context.Background(), term)
+		if err != nil {
+			return fmt.Errorf("MeSH lookup failed: %w", err)
+		}
+
+		return output.FormatMeSHRecord(os.Stdout, record, flagJSON)
+	},
+}
