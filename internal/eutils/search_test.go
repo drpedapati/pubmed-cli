@@ -144,6 +144,32 @@ func TestSearch_WithOptions(t *testing.T) {
 	})
 }
 
+func TestSearch_InvalidCount(t *testing.T) {
+	// Server returns a non-numeric count — should surface parsing error
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"esearchresult":{"count":"not-a-number","retmax":"20","retstart":"0","idlist":[],"querytranslation":"test"}}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(WithBaseURL(srv.URL), WithAPIKey("test"))
+	_, err := c.Search(context.Background(), "test", nil)
+	if err == nil {
+		t.Error("expected error for invalid count, got nil")
+	}
+	if err != nil && !containsString(err.Error(), "count") {
+		t.Errorf("expected error mentioning 'count', got: %v", err)
+	}
+}
+
+func containsString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestSearch_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

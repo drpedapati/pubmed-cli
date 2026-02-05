@@ -61,7 +61,14 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 		return nil, fmt.Errorf("parsing search response: %w", err)
 	}
 
-	count, _ := strconv.Atoi(resp.Result.Count)
+	var count int
+	if resp.Result.Count != "" {
+		var parseErr error
+		count, parseErr = strconv.Atoi(resp.Result.Count)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parsing search result count %q: %w", resp.Result.Count, parseErr)
+		}
+	}
 
 	return &SearchResult{
 		Count:            count,
