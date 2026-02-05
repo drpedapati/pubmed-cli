@@ -4,9 +4,17 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"net/url"
+	"regexp"
 	"strings"
 )
+
+// xmlTagRe matches XML/HTML tags for stripping from innerxml content.
+var xmlTagRe = regexp.MustCompile(`<[^>]+>`)
+
+// yearRe extracts the first 4-digit year from MedlineDate strings.
+var yearRe = regexp.MustCompile(`\d{4}`)
 
 // XML structures for parsing PubMed EFetch responses.
 
@@ -16,14 +24,14 @@ type pubmedArticleSet struct {
 }
 
 type pubmedArticle struct {
-	Citation  medlineCitation `xml:"MedlineCitation"`
-	PubmedData pubmedData    `xml:"PubmedData"`
+	Citation   medlineCitation `xml:"MedlineCitation"`
+	PubmedData pubmedData      `xml:"PubmedData"`
 }
 
 type medlineCitation struct {
-	PMID              xmlPMID           `xml:"PMID"`
-	Article           xmlArticle        `xml:"Article"`
-	MeshHeadingList   xmlMeshHeadingList `xml:"MeshHeadingList"`
+	PMID            xmlPMID            `xml:"PMID"`
+	Article         xmlArticle         `xml:"Article"`
+	MeshHeadingList xmlMeshHeadingList `xml:"MeshHeadingList"`
 }
 
 type xmlPMID struct {
@@ -31,13 +39,13 @@ type xmlPMID struct {
 }
 
 type xmlArticle struct {
-	Journal             xmlJournal            `xml:"Journal"`
-	ArticleTitle        string                `xml:"ArticleTitle"`
-	Abstract            xmlAbstract           `xml:"Abstract"`
-	AuthorList          xmlAuthorList         `xml:"AuthorList"`
-	Language            []string              `xml:"Language"`
+	Journal             xmlJournal             `xml:"Journal"`
+	ArticleTitle        xmlInnerContent        `xml:"ArticleTitle"`
+	Abstract            xmlAbstract            `xml:"Abstract"`
+	AuthorList          xmlAuthorList          `xml:"AuthorList"`
+	Language            []string               `xml:"Language"`
 	PublicationTypeList xmlPublicationTypeList `xml:"PublicationTypeList"`
-	Pagination          xmlPagination         `xml:"Pagination"`
+	Pagination          xmlPagination          `xml:"Pagination"`
 }
 
 type xmlJournal struct {
@@ -47,15 +55,22 @@ type xmlJournal struct {
 }
 
 type xmlJournalIssue struct {
-	Volume  string      `xml:"Volume"`
-	Issue   string      `xml:"Issue"`
-	PubDate xmlPubDate  `xml:"PubDate"`
+	Volume  string     `xml:"Volume"`
+	Issue   string     `xml:"Issue"`
+	PubDate xmlPubDate `xml:"PubDate"`
 }
 
 type xmlPubDate struct {
-	Year  string `xml:"Year"`
-	Month string `xml:"Month"`
-	Day   string `xml:"Day"`
+	Year        string `xml:"Year"`
+	Month       string `xml:"Month"`
+	Day         string `xml:"Day"`
+	MedlineDate string `xml:"MedlineDate"`
+}
+
+// xmlInnerContent captures innerxml to preserve text within nested tags
+// like <i>, <sup>, <sub>, <b> that occur in ArticleTitle and AbstractText.
+type xmlInnerContent struct {
+	Inner string `xml:",innerxml"`
 }
 
 type xmlAbstract struct {
@@ -64,7 +79,7 @@ type xmlAbstract struct {
 
 type xmlAbstractText struct {
 	Label string `xml:"Label,attr"`
-	Text  string `xml:",chardata"`
+	Inner string `xml:",innerxml"`
 }
 
 type xmlAuthorList struct {
@@ -73,10 +88,11 @@ type xmlAuthorList struct {
 }
 
 type xmlAuthor struct {
-	ValidYN         string             `xml:"ValidYN,attr"`
-	LastName        string             `xml:"LastName"`
-	ForeName        string             `xml:"ForeName"`
-	Initials        string             `xml:"Initials"`
+	ValidYN         string              `xml:"ValidYN,attr"`
+	LastName        string              `xml:"LastName"`
+	ForeName        string              `xml:"ForeName"`
+	Initials        string              `xml:"Initials"`
+	CollectiveName  string              `xml:"CollectiveName"`
 	AffiliationInfo []xmlAffiliationInfo `xml:"AffiliationInfo"`
 }
 
@@ -102,8 +118,8 @@ type xmlMeshHeadingList struct {
 }
 
 type xmlMeshHeading struct {
-	Descriptor xmlDescriptorName   `xml:"DescriptorName"`
-	Qualifiers []xmlQualifierName  `xml:"QualifierName"`
+	Descriptor xmlDescriptorName  `xml:"DescriptorName"`
+	Qualifiers []xmlQualifierName `xml:"QualifierName"`
 }
 
 type xmlDescriptorName struct {
@@ -167,20 +183,39 @@ func parseArticles(data []byte) ([]Article, error) {
 	return articles, nil
 }
 
+// cleanInnerXML strips XML tags and decodes HTML entities from innerxml content.
+func cleanInnerXML(s string) string {
+	stripped := xmlTagRe.ReplaceAllString(s, "")
+	return strings.TrimSpace(html.UnescapeString(stripped))
+}
+
+// extractYearFromMedlineDate extracts the first 4-digit year from a MedlineDate string.
+// Common formats: "2020 Jan-Feb", "2019-2020", "Winter 2020", "2020".
+func extractYearFromMedlineDate(md string) string {
+	return yearRe.FindString(md)
+}
+
 func convertArticle(pa pubmedArticle) Article {
 	mc := pa.Citation
 	xa := mc.Article
 
 	a := Article{
 		PMID:          mc.PMID.Value,
-		Title:         xa.ArticleTitle,
+		Title:         cleanInnerXML(xa.ArticleTitle.Inner),
 		Journal:       xa.Journal.Title,
 		JournalAbbrev: xa.Journal.ISOAbbreviation,
 		Volume:        xa.Journal.JournalIssue.Volume,
 		Issue:         xa.Journal.JournalIssue.Issue,
 		Pages:         xa.Pagination.MedlinePgn,
-		Year:          xa.Journal.JournalIssue.PubDate.Year,
-		Month:         xa.Journal.JournalIssue.PubDate.Month,
+	}
+
+	// PubDate: prefer Year field, fall back to MedlineDate
+	pd := xa.Journal.JournalIssue.PubDate
+	if pd.Year != "" {
+		a.Year = pd.Year
+		a.Month = pd.Month
+	} else if pd.MedlineDate != "" {
+		a.Year = extractYearFromMedlineDate(pd.MedlineDate)
 	}
 
 	// Language
@@ -188,11 +223,12 @@ func convertArticle(pa pubmedArticle) Article {
 		a.Language = xa.Language[0]
 	}
 
-	// Abstract sections
+	// Abstract sections — use cleanInnerXML to handle nested tags
 	for _, at := range xa.Abstract.AbstractTexts {
+		text := cleanInnerXML(at.Inner)
 		a.AbstractSections = append(a.AbstractSections, AbstractSection{
 			Label: at.Label,
-			Text:  at.Text,
+			Text:  text,
 		})
 	}
 
@@ -209,15 +245,18 @@ func convertArticle(pa pubmedArticle) Article {
 		a.Abstract = strings.Join(parts, "\n\n")
 	}
 
-	// Authors
+	// Authors — support both individual and collective names
 	for _, au := range xa.AuthorList.Authors {
 		if au.ValidYN == "N" {
 			continue
 		}
-		author := Author{
-			LastName: au.LastName,
-			ForeName: au.ForeName,
-			Initials: au.Initials,
+		author := Author{}
+		if au.CollectiveName != "" {
+			author.CollectiveName = au.CollectiveName
+		} else {
+			author.LastName = au.LastName
+			author.ForeName = au.ForeName
+			author.Initials = au.Initials
 		}
 		if len(au.AffiliationInfo) > 0 {
 			author.Affiliation = au.AffiliationInfo[0].Affiliation
