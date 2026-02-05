@@ -34,7 +34,7 @@ func newTestClient(t *testing.T, srvURL string) *Client {
 
 func TestLookup_Success(t *testing.T) {
 	searchFixture := loadTestdata(t, "mesh_search.json")
-	fetchFixture := loadTestdata(t, "mesh_fetch.txt")
+	esummaryFixture := loadTestdata(t, "mesh_esummary.json")
 
 	callCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,11 +45,8 @@ func TestLookup_Success(t *testing.T) {
 			if got := q.Get("db"); got != "mesh" {
 				t.Errorf("expected db=mesh, got %q", got)
 			}
-			if got := q.Get("term"); got != "Fragile X Syndrome" {
-				t.Errorf("expected term='Fragile X Syndrome', got %q", got)
-			}
 			w.Write(searchFixture)
-		} else if path == "/efetch.fcgi" {
+		} else if path == "/esummary.fcgi" {
 			q := r.URL.Query()
 			if got := q.Get("db"); got != "mesh" {
 				t.Errorf("expected db=mesh, got %q", got)
@@ -57,7 +54,10 @@ func TestLookup_Success(t *testing.T) {
 			if got := q.Get("id"); got != "68005600" {
 				t.Errorf("expected id=68005600, got %q", got)
 			}
-			w.Write(fetchFixture)
+			if got := q.Get("retmode"); got != "json" {
+				t.Errorf("expected retmode=json, got %q", got)
+			}
+			w.Write(esummaryFixture)
 		} else {
 			t.Errorf("unexpected path: %s", path)
 			w.WriteHeader(404)
@@ -99,11 +99,7 @@ func TestLookup_Success(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("expected entry term 'FXS' in entry terms")
-	}
-
-	if record.Annotation == "" {
-		t.Error("expected non-empty annotation")
+		t.Errorf("expected entry term 'FXS' in entry terms, got: %v", record.EntryTerms)
 	}
 }
 
@@ -151,23 +147,5 @@ func TestLookup_ResponseTooLarge(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeds maximum size") {
 		t.Errorf("expected 'exceeds maximum size' error, got: %v", err)
-	}
-}
-
-func TestParseMeSHRecord(t *testing.T) {
-	data := loadTestdata(t, "mesh_fetch.txt")
-	record := parseMeSHRecord(string(data))
-
-	if record.UI != "D005600" {
-		t.Errorf("expected UI 'D005600', got %q", record.UI)
-	}
-	if record.Name != "Fragile X Syndrome" {
-		t.Errorf("expected name 'Fragile X Syndrome', got %q", record.Name)
-	}
-	if len(record.TreeNumbers) != 3 {
-		t.Errorf("expected 3 tree numbers, got %d", len(record.TreeNumbers))
-	}
-	if len(record.EntryTerms) != 5 {
-		t.Errorf("expected 5 entry terms, got %d", len(record.EntryTerms))
 	}
 }

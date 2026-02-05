@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/henrybloomingdale/pubmed-cli/internal/ncbi"
 )
@@ -66,26 +65,49 @@ func (c *Client) Lookup(ctx context.Context, term string) (*MeSHRecord, error) {
 }
 
 func (c *Client) searchMeSH(ctx context.Context, term string) ([]string, error) {
-	params := make(map[string][]string)
-	vals := make(map[string]string)
-	vals["db"] = "mesh"
-	vals["term"] = term
-	vals["retmode"] = "json"
-	for k, v := range vals {
-		params[k] = []string{v}
+	// Try exact MeSH heading match first, fall back to broad search
+	for _, query := range []string{
+		fmt.Sprintf("%q[MeSH Terms]", term),
+		term,
+	} {
+		params := map[string][]string{
+			"db":      {"mesh"},
+			"term":    {query},
+			"retmode": {"json"},
+		}
+
+		resp, err := c.DoGet(ctx, "esearch.fcgi", params)
+		if err != nil {
+			return nil, fmt.Errorf("MeSH search failed: %w", err)
+		}
+
+		var result meshSearchResponse
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return nil, fmt.Errorf("parsing MeSH search response: %w", err)
+		}
+
+		if len(result.Result.IDList) > 0 {
+			return result.Result.IDList, nil
+		}
 	}
 
-	resp, err := c.DoGet(ctx, "esearch.fcgi", params)
-	if err != nil {
-		return nil, fmt.Errorf("MeSH search failed: %w", err)
-	}
+	return nil, nil
+}
 
-	var result meshSearchResponse
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, fmt.Errorf("parsing MeSH search response: %w", err)
-	}
+// esummaryResponse wraps the JSON returned by esummary.fcgi for the MeSH db.
+type esummaryResponse struct {
+	Result map[string]json.RawMessage `json:"result"`
+}
 
-	return result.Result.IDList, nil
+// esummaryRecord holds the fields we need from a single MeSH esummary record.
+type esummaryRecord struct {
+	UID       string   `json:"uid"`
+	ScopeNote string   `json:"ds_scopenote"`
+	MeshTerms []string `json:"ds_meshterms"`
+	MeshUI    string   `json:"ds_meshui"`
+	IdxLinks  []struct {
+		TreeNum string `json:"treenum"`
+	} `json:"ds_idxlinks"`
 }
 
 func (c *Client) fetchMeSH(ctx context.Context, uid string) (*MeSHRecord, error) {
@@ -93,58 +115,50 @@ func (c *Client) fetchMeSH(ctx context.Context, uid string) (*MeSHRecord, error)
 	vals := map[string]string{
 		"db":      "mesh",
 		"id":      uid,
-		"rettype": "full",
-		"retmode": "text",
+		"retmode": "json",
 	}
 	for k, v := range vals {
 		params[k] = []string{v}
 	}
 
-	body, err := c.DoGet(ctx, "efetch.fcgi", params)
+	body, err := c.DoGet(ctx, "esummary.fcgi", params)
 	if err != nil {
 		return nil, fmt.Errorf("MeSH fetch failed: %w", err)
 	}
 
-	record := parseMeSHRecord(string(body))
-	return &record, nil
-}
+	var resp esummaryResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parsing MeSH summary: %w", err)
+	}
 
-// parseMeSHRecord parses the NCBI MeSH full text format into a MeSHRecord.
-func parseMeSHRecord(text string) MeSHRecord {
-	record := MeSHRecord{}
+	raw, ok := resp.Result[uid]
+	if !ok {
+		return nil, fmt.Errorf("MeSH UID %s not found in response", uid)
+	}
 
-	lines := strings.Split(text, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || line == "*NEWRECORD" {
-			continue
-		}
+	var rec esummaryRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return nil, fmt.Errorf("parsing MeSH record %s: %w", uid, err)
+	}
 
-		parts := strings.SplitN(line, " = ", 2)
-		if len(parts) != 2 {
-			continue
-		}
+	record := &MeSHRecord{
+		UI:        rec.MeshUI,
+		ScopeNote: rec.ScopeNote,
+	}
 
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		switch key {
-		case "MH":
-			record.Name = value
-		case "UI":
-			record.UI = value
-		case "MS":
-			record.ScopeNote = value
-		case "MN":
-			record.TreeNumbers = append(record.TreeNumbers, value)
-		case "AN":
-			record.Annotation = value
-		case "ENTRY":
-			// Entry terms have format: "Term|T047|..."
-			entryParts := strings.SplitN(value, "|", 2)
-			record.EntryTerms = append(record.EntryTerms, strings.TrimSpace(entryParts[0]))
+	// First term is the heading; rest are entry terms
+	if len(rec.MeshTerms) > 0 {
+		record.Name = rec.MeshTerms[0]
+		if len(rec.MeshTerms) > 1 {
+			record.EntryTerms = rec.MeshTerms[1:]
 		}
 	}
 
-	return record
+	for _, link := range rec.IdxLinks {
+		if link.TreeNum != "" {
+			record.TreeNumbers = append(record.TreeNumbers, link.TreeNum)
+		}
+	}
+
+	return record, nil
 }

@@ -1,0 +1,53 @@
+{
+    "header": {
+        "type": "esummary",
+        "version": "0.3"
+    },
+    "result": {
+        "uids": [
+            "68005600"
+        ],
+        "68005600": {
+            "uid": "68005600",
+            "ds_yearintroduced": "",
+            "ds_scopenote": "A condition characterized genotypically by mutation of the distal end of the long arm of the X chromosome (at gene loci FRAXA or FRAXE) and phenotypically by cognitive impairment, hyperactivity, SEIZURES, language delay, and enlargement of the ears, head, and testes.",
+            "ds_registrynumber": "",
+            "ds_headingmappedto": "",
+            "ds_meshterms": [
+                "Fragile X Syndrome",
+                "FXS",
+                "Marker X Syndrome",
+                "Martin-Bell Syndrome",
+                "Fra(X) Syndrome",
+                "FRAXA Syndrome"
+            ],
+            "ds_subheading": [],
+            "ds_papx": [],
+            "ds_previousindexing": [],
+            "ds_seerelated": [],
+            "ds_palist": [],
+            "ds_idxlinks": [
+                {
+                    "parent": 68001927,
+                    "treenum": "C10.597.606.360.320.322",
+                    "children": []
+                },
+                {
+                    "parent": 68008607,
+                    "treenum": "C16.131.260.830.300",
+                    "children": []
+                },
+                {
+                    "parent": 68008607,
+                    "treenum": "C16.320.180.830.300",
+                    "children": []
+                }
+            ],
+            "ds_entrydate": "1/01/01 00:00",
+            "ds_revisiondate": "1/01/01 00:00",
+            "ds_headingmappedtolist": [],
+            "ds_recordtype": "descriptor",
+            "ds_meshui": "D005600"
+        }
+    }
+}
