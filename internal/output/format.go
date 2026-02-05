@@ -11,12 +11,82 @@ import (
 	"github.com/henrybloomingdale/pubmed-cli/internal/mesh"
 )
 
-// FormatSearchResult writes search results in JSON or human-readable format.
-func FormatSearchResult(w io.Writer, result *eutils.SearchResult, asJSON bool) error {
-	if asJSON {
+// OutputConfig controls which output mode(s) are active.
+type OutputConfig struct {
+	JSON    bool   // Structured JSON
+	Human   bool   // Rich terminal output with color
+	Full    bool   // Show full abstract (human mode)
+	CSVFile string // Export results to this CSV path (works alongside any mode)
+}
+
+// FormatSearchResult writes search results.
+// articles may be non-nil when --human or --csv triggers an auto-fetch.
+func FormatSearchResult(w io.Writer, result *eutils.SearchResult, articles []eutils.Article, cfg OutputConfig) error {
+	if cfg.CSVFile != "" {
+		if err := writeSearchCSV(cfg.CSVFile, result, articles); err != nil {
+			return fmt.Errorf("CSV export failed: %w", err)
+		}
+	}
+	if cfg.JSON {
 		return writeJSON(w, result)
 	}
+	if cfg.Human {
+		return formatSearchHuman(w, result, articles)
+	}
+	return formatSearchPlain(w, result)
+}
 
+// FormatArticles writes article details.
+func FormatArticles(w io.Writer, articles []eutils.Article, cfg OutputConfig) error {
+	if cfg.CSVFile != "" {
+		if err := writeArticlesCSV(cfg.CSVFile, articles); err != nil {
+			return fmt.Errorf("CSV export failed: %w", err)
+		}
+	}
+	if cfg.JSON {
+		return writeJSON(w, articles)
+	}
+	if cfg.Human {
+		return formatArticlesHuman(w, articles, cfg.Full)
+	}
+	return formatArticlesPlain(w, articles)
+}
+
+// FormatLinks writes link results.
+func FormatLinks(w io.Writer, result *eutils.LinkResult, linkType string, cfg OutputConfig) error {
+	if cfg.CSVFile != "" {
+		if err := writeLinksCSV(cfg.CSVFile, result); err != nil {
+			return fmt.Errorf("CSV export failed: %w", err)
+		}
+	}
+	if cfg.JSON {
+		return writeJSON(w, result)
+	}
+	if cfg.Human {
+		return formatLinksHuman(w, result, linkType)
+	}
+	return formatLinksPlain(w, result, linkType)
+}
+
+// FormatMeSHRecord writes a MeSH record.
+func FormatMeSHRecord(w io.Writer, record *mesh.MeSHRecord, cfg OutputConfig) error {
+	if cfg.CSVFile != "" {
+		if err := writeMeSHCSV(cfg.CSVFile, record); err != nil {
+			return fmt.Errorf("CSV export failed: %w", err)
+		}
+	}
+	if cfg.JSON {
+		return writeJSON(w, record)
+	}
+	if cfg.Human {
+		return formatMeSHHuman(w, record)
+	}
+	return formatMeSHPlain(w, record)
+}
+
+// --- Plain text formatters (default) ---
+
+func formatSearchPlain(w io.Writer, result *eutils.SearchResult) error {
 	if result.Count == 0 {
 		fmt.Fprintln(w, "No results found.")
 		return nil
@@ -40,12 +110,7 @@ func FormatSearchResult(w io.Writer, result *eutils.SearchResult, asJSON bool) e
 	return nil
 }
 
-// FormatArticles writes article details in JSON or human-readable format.
-func FormatArticles(w io.Writer, articles []eutils.Article, asJSON bool) error {
-	if asJSON {
-		return writeJSON(w, articles)
-	}
-
+func formatArticlesPlain(w io.Writer, articles []eutils.Article) error {
 	if len(articles) == 0 {
 		fmt.Fprintln(w, "No articles found.")
 		return nil
@@ -59,7 +124,6 @@ func FormatArticles(w io.Writer, articles []eutils.Article, asJSON bool) error {
 		fmt.Fprintf(w, "PMID: %s\n", a.PMID)
 		fmt.Fprintf(w, "Title: %s\n", a.Title)
 
-		// Authors
 		if len(a.Authors) > 0 {
 			names := make([]string, len(a.Authors))
 			for j, au := range a.Authors {
@@ -68,7 +132,6 @@ func FormatArticles(w io.Writer, articles []eutils.Article, asJSON bool) error {
 			fmt.Fprintf(w, "Authors: %s\n", strings.Join(names, ", "))
 		}
 
-		// Journal citation
 		citation := a.Journal
 		if a.Volume != "" {
 			citation += " " + a.Volume
@@ -84,29 +147,20 @@ func FormatArticles(w io.Writer, articles []eutils.Article, asJSON bool) error {
 		}
 		fmt.Fprintf(w, "Journal: %s\n", citation)
 
-		// DOI
 		if a.DOI != "" {
 			fmt.Fprintf(w, "DOI: %s\n", a.DOI)
 		}
-
-		// PMCID
 		if a.PMCID != "" {
 			fmt.Fprintf(w, "PMCID: %s\n", a.PMCID)
 		}
-
-		// Publication types
 		if len(a.PublicationTypes) > 0 {
 			fmt.Fprintf(w, "Type: %s\n", strings.Join(a.PublicationTypes, ", "))
 		}
-
-		// Abstract
 		if a.Abstract != "" {
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "Abstract:")
 			fmt.Fprintln(w, a.Abstract)
 		}
-
-		// MeSH terms
 		if len(a.MeSHTerms) > 0 {
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "MeSH Terms:")
@@ -127,12 +181,7 @@ func FormatArticles(w io.Writer, articles []eutils.Article, asJSON bool) error {
 	return nil
 }
 
-// FormatLinks writes link results in JSON or human-readable format.
-func FormatLinks(w io.Writer, result *eutils.LinkResult, linkType string, asJSON bool) error {
-	if asJSON {
-		return writeJSON(w, result)
-	}
-
+func formatLinksPlain(w io.Writer, result *eutils.LinkResult, linkType string) error {
 	if len(result.Links) == 0 {
 		fmt.Fprintf(w, "No %s results for PMID %s.\n", linkType, result.SourceID)
 		return nil
@@ -161,12 +210,7 @@ func FormatLinks(w io.Writer, result *eutils.LinkResult, linkType string, asJSON
 	return nil
 }
 
-// FormatMeSHRecord writes a MeSH record in JSON or human-readable format.
-func FormatMeSHRecord(w io.Writer, record *mesh.MeSHRecord, asJSON bool) error {
-	if asJSON {
-		return writeJSON(w, record)
-	}
-
+func formatMeSHPlain(w io.Writer, record *mesh.MeSHRecord) error {
 	fmt.Fprintf(w, "MeSH Term: %s\n", record.Name)
 	fmt.Fprintf(w, "UI: %s\n", record.UI)
 

@@ -15,6 +15,9 @@ import (
 
 var (
 	flagJSON   bool
+	flagHuman  bool
+	flagFull   bool
+	flagCSV    string
 	flagLimit  int
 	flagSort   string
 	flagYear   string
@@ -36,6 +39,9 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as structured JSON")
+	rootCmd.PersistentFlags().BoolVarP(&flagHuman, "human", "H", false, "Rich colorful terminal output")
+	rootCmd.PersistentFlags().BoolVar(&flagFull, "full", false, "Show full abstract (with --human)")
+	rootCmd.PersistentFlags().StringVar(&flagCSV, "csv", "", "Export results to CSV file")
 	rootCmd.PersistentFlags().IntVar(&flagLimit, "limit", 20, "Maximum number of results")
 	rootCmd.PersistentFlags().StringVar(&flagSort, "sort", "", "Sort order: relevance, date, or cited")
 	rootCmd.PersistentFlags().StringVar(&flagYear, "year", "", "Filter by year range (e.g., 2020-2025)")
@@ -48,6 +54,15 @@ func init() {
 	rootCmd.AddCommand(referencesCmd)
 	rootCmd.AddCommand(relatedCmd)
 	rootCmd.AddCommand(meshCmd)
+}
+
+func outputCfg() output.OutputConfig {
+	return output.OutputConfig{
+		JSON:    flagJSON,
+		Human:   flagHuman,
+		Full:    flagFull,
+		CSVFile: flagCSV,
+	}
 }
 
 func newBaseClient() *ncbi.BaseClient {
@@ -111,6 +126,7 @@ var searchCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := newEutilsClient()
 		query := buildQuery(args)
+		cfg := outputCfg()
 
 		opts := &eutils.SearchOptions{
 			Limit: flagLimit,
@@ -130,7 +146,18 @@ var searchCmd = &cobra.Command{
 			return fmt.Errorf("search failed: %w", err)
 		}
 
-		return output.FormatSearchResult(os.Stdout, result, flagJSON)
+		// Auto-fetch articles for --human or --csv (rich table/export)
+		var articles []eutils.Article
+		if (cfg.Human || cfg.CSVFile != "") && len(result.IDs) > 0 {
+			articles, err = client.Fetch(cmd.Context(), result.IDs)
+			if err != nil {
+				// Non-fatal: fall back to PMID-only display
+				fmt.Fprintf(os.Stderr, "Warning: could not fetch article details: %v\n", err)
+				articles = nil
+			}
+		}
+
+		return output.FormatSearchResult(os.Stdout, result, articles, cfg)
 	},
 }
 
@@ -148,7 +175,7 @@ var fetchCmd = &cobra.Command{
 			return fmt.Errorf("fetch failed: %w", err)
 		}
 
-		return output.FormatArticles(os.Stdout, articles, flagJSON)
+		return output.FormatArticles(os.Stdout, articles, outputCfg())
 	},
 }
 
@@ -166,7 +193,7 @@ var citedByCmd = &cobra.Command{
 			return fmt.Errorf("cited-by lookup failed: %w", err)
 		}
 
-		return output.FormatLinks(os.Stdout, result, "cited-by", flagJSON)
+		return output.FormatLinks(os.Stdout, result, "cited-by", outputCfg())
 	},
 }
 
@@ -184,7 +211,7 @@ var referencesCmd = &cobra.Command{
 			return fmt.Errorf("references lookup failed: %w", err)
 		}
 
-		return output.FormatLinks(os.Stdout, result, "references", flagJSON)
+		return output.FormatLinks(os.Stdout, result, "references", outputCfg())
 	},
 }
 
@@ -202,7 +229,7 @@ var relatedCmd = &cobra.Command{
 			return fmt.Errorf("related articles lookup failed: %w", err)
 		}
 
-		return output.FormatLinks(os.Stdout, result, "related", flagJSON)
+		return output.FormatLinks(os.Stdout, result, "related", outputCfg())
 	},
 }
 
@@ -221,6 +248,6 @@ var meshCmd = &cobra.Command{
 			return fmt.Errorf("MeSH lookup failed: %w", err)
 		}
 
-		return output.FormatMeSHRecord(os.Stdout, record, flagJSON)
+		return output.FormatMeSHRecord(os.Stdout, record, outputCfg())
 	},
 }

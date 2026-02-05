@@ -11,24 +11,22 @@ import (
 
 func TestFormatSearchJSON(t *testing.T) {
 	result := &eutils.SearchResult{
-		Count: 42,
-		IDs:   []string{"123", "456", "789"},
+		Count:            42,
+		IDs:              []string{"123", "456", "789"},
 		QueryTranslation: "test query",
 	}
 
 	var buf bytes.Buffer
-	err := FormatSearchResult(&buf, result, true)
+	err := FormatSearchResult(&buf, result, nil, OutputConfig{JSON: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should be valid JSON
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
 		t.Fatalf("output is not valid JSON: %v\nOutput: %s", err, buf.String())
 	}
 
-	// Check fields
 	if count, ok := parsed["count"].(float64); !ok || int(count) != 42 {
 		t.Errorf("expected count 42, got %v", parsed["count"])
 	}
@@ -39,15 +37,15 @@ func TestFormatSearchJSON(t *testing.T) {
 	}
 }
 
-func TestFormatSearchHuman(t *testing.T) {
+func TestFormatSearchPlain(t *testing.T) {
 	result := &eutils.SearchResult{
-		Count: 42,
-		IDs:   []string{"123", "456"},
+		Count:            42,
+		IDs:              []string{"123", "456"},
 		QueryTranslation: "test query",
 	}
 
 	var buf bytes.Buffer
-	err := FormatSearchResult(&buf, result, false)
+	err := FormatSearchResult(&buf, result, nil, OutputConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -71,7 +69,7 @@ func TestFormatSearchEmpty(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := FormatSearchResult(&buf, result, false)
+	err := FormatSearchResult(&buf, result, nil, OutputConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,24 +89,21 @@ func TestFormatArticleJSON(t *testing.T) {
 			Authors: []eutils.Author{
 				{LastName: "Smith", ForeName: "John", Initials: "J"},
 			},
-			Journal:  "Test Journal",
-			Year:     "2024",
-			DOI:      "10.1234/test",
-			MeSHTerms: []eutils.MeSHTerm{
-				{Descriptor: "Humans", MajorTopic: false},
-			},
+			Journal:          "Test Journal",
+			Year:             "2024",
+			DOI:              "10.1234/test",
+			MeSHTerms:        []eutils.MeSHTerm{{Descriptor: "Humans", MajorTopic: false}},
 			PublicationTypes: []string{"Journal Article"},
 			Language:         "eng",
 		},
 	}
 
 	var buf bytes.Buffer
-	err := FormatArticles(&buf, articles, true)
+	err := FormatArticles(&buf, articles, OutputConfig{JSON: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should be valid JSON
 	var parsed []map[string]interface{}
 	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
 		t.Fatalf("output is not valid JSON: %v\nOutput: %s", err, buf.String())
@@ -122,7 +117,7 @@ func TestFormatArticleJSON(t *testing.T) {
 	}
 }
 
-func TestFormatArticleHuman(t *testing.T) {
+func TestFormatArticlePlain(t *testing.T) {
 	articles := []eutils.Article{
 		{
 			PMID:     "12345",
@@ -149,7 +144,7 @@ func TestFormatArticleHuman(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := FormatArticles(&buf, articles, false)
+	err := FormatArticles(&buf, articles, OutputConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -175,28 +170,26 @@ func TestFormatArticleHuman(t *testing.T) {
 func TestFormatArticleEmptyYear(t *testing.T) {
 	articles := []eutils.Article{
 		{
-			PMID:    "99999",
-			Title:   "Article with no year",
-			Journal: "Some Journal",
-			Year:    "", // empty year
-			Volume:  "10",
+			PMID:             "99999",
+			Title:            "Article with no year",
+			Journal:          "Some Journal",
+			Year:             "",
+			Volume:           "10",
 			PublicationTypes: []string{"Journal Article"},
 			Language:         "eng",
 		},
 	}
 
 	var buf bytes.Buffer
-	err := FormatArticles(&buf, articles, false)
+	err := FormatArticles(&buf, articles, OutputConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	out := buf.String()
-	// Should NOT contain "()" from empty year
 	if strings.Contains(out, "()") {
 		t.Errorf("output should not contain '()' when year is empty, got:\n%s", out)
 	}
-	// Should still contain the journal name
 	if !strings.Contains(out, "Some Journal") {
 		t.Error("expected output to contain journal name")
 	}
@@ -204,7 +197,7 @@ func TestFormatArticleEmptyYear(t *testing.T) {
 
 func TestFormatArticleEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatArticles(&buf, []eutils.Article{}, false)
+	err := FormatArticles(&buf, []eutils.Article{}, OutputConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -225,7 +218,7 @@ func TestFormatLinksJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := FormatLinks(&buf, result, "cited-by", true)
+	err := FormatLinks(&buf, result, "cited-by", OutputConfig{JSON: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -236,7 +229,7 @@ func TestFormatLinksJSON(t *testing.T) {
 	}
 }
 
-func TestFormatLinksHuman(t *testing.T) {
+func TestFormatLinksPlain(t *testing.T) {
 	result := &eutils.LinkResult{
 		SourceID: "12345",
 		Links: []eutils.LinkItem{
@@ -246,7 +239,7 @@ func TestFormatLinksHuman(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := FormatLinks(&buf, result, "cited-by", false)
+	err := FormatLinks(&buf, result, "cited-by", OutputConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -267,7 +260,7 @@ func TestFormatLinksEmpty(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := FormatLinks(&buf, result, "cited-by", false)
+	err := FormatLinks(&buf, result, "cited-by", OutputConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
