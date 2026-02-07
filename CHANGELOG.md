@@ -2,6 +2,18 @@
 
 All notable changes to pubmed-cli will be documented in this file.
 
+## [0.5.1] - 2026-02-07
+
+### Fixed
+- **Codex 5.3 code review fixes** across wizard.go, synth.go, engine.go
+- Nil-pointer guards throughout
+- Context cancellation respected during LLM scoring
+- UTF-8 safe text truncation
+- APA formatting for collective/group authors
+- Clear error messages when API key missing or all scoring fails
+- DOCX fallback to markdown when pandoc unavailable
+- Multi-word queries work without quotes
+
 ## [0.5.0] - 2026-02-07
 
 ### Added
