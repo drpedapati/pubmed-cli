@@ -4,7 +4,7 @@
     <strong>PubMed from your terminal. Built for humans and AI agents.</strong>
   </p>
   <p align="center">
-    <a href="https://github.com/henrybloomingdale/pubmed-cli/releases/latest"><img src="https://img.shields.io/badge/version-0.3.0-blue?style=flat-square" alt="v0.3.0"></a>
+    <a href="https://github.com/henrybloomingdale/pubmed-cli/releases/latest"><img src="https://img.shields.io/badge/version-0.4.0-blue?style=flat-square" alt="v0.4.0"></a>
     <img src="https://img.shields.io/badge/go-1.25-00ADD8?style=flat-square&logo=go" alt="Go 1.25">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   </p>
@@ -16,9 +16,10 @@ Search PubMed, fetch abstracts, traverse citation networks, answer biomedical qu
 
 ## ✨ Features
 
-- **7 commands** — `search`, `fetch`, `cited-by`, `references`, `related`, `mesh`, `qa`
-- **Adaptive QA** — confidence-gated retrieval that knows when to look things up
-- **Dual output** — `--json` for machines, `--human` for rich terminal display
+- **8 commands** — `search`, `fetch`, `cited-by`, `references`, `related`, `mesh`, `qa`, `synth`
+- **Literature synthesis** — search, filter by relevance, synthesize with citations
+- **Multiple outputs** — Markdown, Word (.docx), RIS (for reference managers), JSON
+- **Adaptive QA** — confidence-gated retrieval for yes/no questions
 - **LLM integration** — works with OpenAI, Anthropic, or any OpenAI-compatible API
 - **Rate-limited** — respects NCBI guidelines (3 req/s default, 10 with API key)
 - **Zero dependencies** — single static binary, ~5ms startup
@@ -54,7 +55,7 @@ go build -o pubmed ./cmd/pubmed
 
 ### What you get
 
-One command, seven subcommands:
+One command, eight subcommands:
 
 ```
 pubmed search    # Search PubMed
@@ -63,7 +64,8 @@ pubmed cited-by  # Find citing papers
 pubmed references # Find referenced papers
 pubmed related   # Find similar papers
 pubmed mesh      # Look up MeSH terms
-pubmed qa        # Answer biomedical questions (v0.3.0+)
+pubmed qa        # Answer yes/no questions (benchmark)
+pubmed synth     # Synthesize literature with citations (v0.4.0+)
 ```
 
 ## ⚙️ Configuration
@@ -111,6 +113,53 @@ This approach:
 Install Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 ## 🚀 Commands
+
+### synth — Synthesize literature with citations
+
+The main research tool. Searches PubMed, scores papers for relevance, and synthesizes findings into paragraphs with proper citations.
+
+```bash
+# Basic synthesis — outputs markdown
+pubmed synth "SGLT-2 inhibitors in liver fibrosis"
+
+# Word document + RIS file for reference managers
+pubmed synth "CBT for pediatric anxiety" --docx review.docx --ris refs.ris
+
+# More papers, longer output
+pubmed synth "autism biomarkers" --papers 10 --words 500
+
+# Single paper deep dive
+pubmed synth --pmid 41234567 --words 400
+
+# JSON for agents
+pubmed synth "treatments for fragile x" --json
+```
+
+**How it works:**
+
+1. **Search** — Queries PubMed for relevant papers (default: 30)
+2. **Score** — LLM rates each paper's relevance to your question (1-10)
+3. **Filter** — Keeps papers above threshold (default: ≥7)
+4. **Synthesize** — Generates cohesive paragraphs with inline citations
+5. **Export** — Outputs markdown, Word doc, RIS, or JSON
+
+**Output includes:**
+- Synthesis paragraph(s) with inline citations (APA style)
+- Numbered reference list with PMIDs and DOIs
+- Token usage statistics
+- RIS file for EndNote/Zotero/Mendeley import
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--papers N` | 5 | Papers to include in synthesis |
+| `--search N` | 30 | Papers to search before filtering |
+| `--relevance N` | 7 | Minimum relevance score (1-10) |
+| `--words N` | 250 | Target word count |
+| `--docx FILE` | — | Output Word document |
+| `--ris FILE` | — | Output RIS for reference managers |
+| `--pmid ID` | — | Deep dive on single paper |
+| `--json` | — | Structured JSON output |
+| `--claude` | — | Use Claude CLI (no API key) |
 
 ### qa — Answer biomedical questions
 
@@ -275,7 +324,8 @@ The `qa` command implements **confidence-gated adaptive retrieval**: the model o
 pubmed-cli/
 ├── cmd/pubmed/           # CLI entry point (Cobra)
 │   ├── main.go           # Root command + search/fetch/mesh/link commands
-│   └── qa.go             # QA command with adaptive retrieval
+│   ├── qa.go             # QA command (yes/no benchmark)
+│   └── synth.go          # Synthesis command (literature review)
 ├── internal/
 │   ├── eutils/           # NCBI E-utilities client
 │   │   ├── client.go     # Rate-limited HTTP transport
@@ -284,9 +334,14 @@ pubmed-cli/
 │   │   ├── link.go       # ELink (citations, related)
 │   │   └── types.go      # Domain types
 │   ├── llm/              # LLM client abstraction
-│   │   └── client.go     # OpenAI-compatible + Claude support
-│   ├── qa/               # Adaptive retrieval engine
-│   │   └── adaptive.go   # Novelty detection, confidence gating, minification
+│   │   ├── client.go     # OpenAI-compatible API
+│   │   └── claude.go     # Claude CLI wrapper
+│   ├── qa/               # Adaptive retrieval for yes/no
+│   │   └── adaptive.go   # Novelty detection, confidence gating
+│   ├── synth/            # Literature synthesis engine
+│   │   ├── engine.go     # Main synthesis workflow
+│   │   ├── relevance.go  # LLM-based relevance scoring
+│   │   └── ris.go        # RIS export for reference managers
 │   ├── mesh/             # MeSH descriptor lookup
 │   └── output/           # JSON / human / CSV formatters
 └── go.mod

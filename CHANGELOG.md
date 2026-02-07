@@ -2,6 +2,24 @@
 
 All notable changes to pubmed-cli will be documented in this file.
 
+## [0.4.0] - 2026-02-07
+
+### Added
+- **`pubmed synth` command** — Literature synthesis with citations
+  - Searches PubMed and scores papers for relevance using LLM
+  - Filters to top relevant papers (configurable threshold)
+  - Synthesizes findings into cohesive paragraphs with inline citations
+  - Outputs: Markdown (default), Word document (`--docx`), RIS (`--ris`), JSON (`--json`)
+  - Single paper deep dive with `--pmid`
+  - Configurable paper count, word count, relevance threshold
+  - Token usage tracking
+- RIS export for reference manager import (EndNote, Zotero, Mendeley)
+- APA citation formatting
+
+### Changed
+- `pubmed qa` clarified as yes/no benchmark tool
+- README reorganized with `synth` as primary research command
+
 ## [0.3.0] - 2026-02-07
 
 ### Added
