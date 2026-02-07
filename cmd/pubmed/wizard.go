@@ -33,6 +33,15 @@ type WizardConfig struct {
 	UseClaude        bool   `json:"use_claude"`
 }
 
+// wizardInputs holds collected user inputs from the wizard form.
+type wizardInputs struct {
+	Question     string
+	Papers       int
+	Words        int
+	OutputFormat string
+	OutputName   string
+}
+
 // DefaultWizardConfig returns sensible defaults.
 func DefaultWizardConfig() WizardConfig {
 	return WizardConfig{
@@ -95,13 +104,45 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		cfg.OutputFolder = getDefaultOutputFolder()
 	}
 
-	// Clear screen and show welcome.
+	// Show welcome.
+	printWizardWelcome()
+
+	// Collect user inputs via interactive form.
+	inputs, cancelled, err := collectWizardInputs(&cfg)
+	if err != nil {
+		return err
+	}
+	if cancelled {
+		fmt.Println(dimStyle.Render("\nCancelled."))
+		return nil
+	}
+
+	// Ensure output folder exists.
+	if err := os.MkdirAll(cfg.OutputFolder, 0o755); err != nil {
+		return fmt.Errorf("create output folder: %w", err)
+	}
+
+	// Execute synthesis.
+	result, err := executeWizardSynthesis(cmd.Context(), &cfg, inputs)
+	if err != nil {
+		return err
+	}
+
+	// Handle output based on format.
+	return handleWizardOutput(cmd.Context(), result, inputs, &cfg)
+}
+
+// printWizardWelcome clears the screen and displays the welcome banner.
+func printWizardWelcome() {
 	fmt.Print("\033[H\033[2J")
 	fmt.Println(titleStyle.Render("🔬 PubMed Literature Synthesis"))
 	fmt.Println(subtitleStyle.Render("Create a research synthesis with citations in seconds"))
 	fmt.Println()
+}
 
-	// Form values.
+// collectWizardInputs displays the interactive form and collects user inputs.
+// Returns the inputs, a cancelled flag, and any error.
+func collectWizardInputs(cfg *WizardConfig) (*wizardInputs, bool, error) {
 	var (
 		question     string
 		papersStr    string
@@ -110,7 +151,7 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		outputName   string
 		confirm      bool
 	)
-	outputFormat = defaultOutputFormat(cfg)
+	outputFormat = defaultOutputFormat(*cfg)
 
 	// Build the form.
 	form := huh.NewForm(
@@ -178,74 +219,70 @@ func runWizard(cmd *cobra.Command, args []string) error {
 	).WithTheme(huh.ThemeCatppuccin())
 
 	if err := form.Run(); err != nil {
-		return err
+		return nil, false, err
 	}
 	if !confirm {
-		fmt.Println(dimStyle.Render("\nCancelled."))
-		return nil
+		return nil, true, nil
 	}
 
-	// Parse values with defaults.
-	papers := cfg.DefaultPapers
-	papersStr = strings.TrimSpace(papersStr)
-	if papersStr != "" {
+	// Parse form values into inputs struct.
+	return parseWizardFormValues(cfg, question, papersStr, wordsStr, outputFormat, outputName)
+}
+
+// parseWizardFormValues converts raw form strings into validated wizardInputs.
+func parseWizardFormValues(cfg *WizardConfig, question, papersStr, wordsStr, outputFormat, outputName string) (*wizardInputs, bool, error) {
+	inputs := &wizardInputs{
+		Question:     question,
+		Papers:       cfg.DefaultPapers,
+		Words:        cfg.DefaultWords,
+		OutputFormat: outputFormat,
+	}
+
+	// Parse papers count.
+	if papersStr = strings.TrimSpace(papersStr); papersStr != "" {
 		p, err := strconv.Atoi(papersStr)
 		if err != nil {
-			return fmt.Errorf("parse papers: %w", err)
+			return nil, false, fmt.Errorf("parse papers: %w", err)
 		}
-		papers = p
+		inputs.Papers = p
 	}
 
-	words := cfg.DefaultWords
-	wordsStr = strings.TrimSpace(wordsStr)
-	if wordsStr != "" {
+	// Parse word count.
+	if wordsStr = strings.TrimSpace(wordsStr); wordsStr != "" {
 		w, err := strconv.Atoi(wordsStr)
 		if err != nil {
-			return fmt.Errorf("parse words: %w", err)
+			return nil, false, fmt.Errorf("parse words: %w", err)
 		}
-		words = w
+		inputs.Words = w
 	}
 
+	// Parse output name.
 	if strings.TrimSpace(outputName) == "" {
 		outputName = "synthesis"
 	}
 	name, err := sanitizeOutputName(outputName)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
-	outputName = name
+	inputs.OutputName = name
 
-	// Ensure output folder exists.
-	if err := os.MkdirAll(cfg.OutputFolder, 0o755); err != nil {
-		return fmt.Errorf("create output folder: %w", err)
-	}
+	return inputs, false, nil
+}
 
-	// Build file paths.
-	docxPath := filepath.Join(cfg.OutputFolder, outputName+".docx")
-	risPath := filepath.Join(cfg.OutputFolder, outputName+".ris")
-	mdPath := filepath.Join(cfg.OutputFolder, outputName+".md")
-
+// executeWizardSynthesis builds the LLM client and runs the synthesis engine.
+func executeWizardSynthesis(ctx context.Context, cfg *WizardConfig, inputs *wizardInputs) (*synth.Result, error) {
 	fmt.Println()
 
 	// Build LLM client.
-	var llmClient synth.LLMClient
-	if cfg.UseClaude {
-		llmClient, err = llm.NewClaudeClient(cfg.LLMModel)
-		if err != nil {
-			return fmt.Errorf("claude setup: %w", err)
-		}
-	} else {
-		var opts []llm.Option
-		if cfg.LLMModel != "" {
-			opts = append(opts, llm.WithModel(cfg.LLMModel))
-		}
-		llmClient = llm.NewClient(opts...)
+	llmClient, err := buildLLMClient(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	// Build synth config.
 	synthCfg := synth.DefaultConfig()
-	synthCfg.PapersToUse = papers
-	synthCfg.TargetWords = words
+	synthCfg.PapersToUse = inputs.Papers
+	synthCfg.TargetWords = inputs.Words
 	synthCfg.RelevanceThreshold = cfg.DefaultRelevance
 
 	engine := synth.NewEngine(llmClient, newEutilsClient(), synthCfg)
@@ -256,7 +293,7 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		synthErr error
 	)
 	action := func() {
-		result, synthErr = engine.Synthesize(cmd.Context(), question)
+		result, synthErr = engine.Synthesize(ctx, inputs.Question)
 	}
 
 	spinErr := spinner.New().
@@ -265,48 +302,44 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		Run()
 
 	if spinErr != nil {
-		return spinErr
+		return nil, spinErr
 	}
 	if synthErr != nil {
-		return synthErr
+		return nil, synthErr
 	}
 	if result == nil {
-		return errors.New("synthesis returned nil result")
+		return nil, errors.New("synthesis returned nil result")
 	}
 
-	// Save outputs based on format.
-	var savedFiles []string
+	return result, nil
+}
 
-	switch outputFormat {
-	case "docx+ris":
-		if err := saveMarkdownFile(mdPath, result); err != nil {
-			return err
+// buildLLMClient creates the appropriate LLM client based on config.
+func buildLLMClient(cfg *WizardConfig) (synth.LLMClient, error) {
+	if cfg.UseClaude {
+		client, err := llm.NewClaudeClient(cfg.LLMModel)
+		if err != nil {
+			return nil, fmt.Errorf("claude setup: %w", err)
 		}
-		if err := convertToDocxContext(cmd.Context(), mdPath, docxPath); err != nil {
-			fmt.Fprintln(os.Stderr, dimStyle.Render(fmt.Sprintf("Pandoc conversion failed (%v). Keeping markdown output.", err)))
-			// Fall back to just markdown.
-			savedFiles = append(savedFiles, mdPath)
-		} else {
-			_ = os.Remove(mdPath) // best-effort cleanup
-			savedFiles = append(savedFiles, docxPath)
-		}
-		if err := os.WriteFile(risPath, []byte(result.RIS), 0o644); err != nil {
-			return fmt.Errorf("write RIS: %w", err)
-		}
-		savedFiles = append(savedFiles, risPath)
+		return client, nil
+	}
 
-	case "docx":
-		if err := saveMarkdownFile(mdPath, result); err != nil {
-			return err
-		}
-		if err := convertToDocxContext(cmd.Context(), mdPath, docxPath); err != nil {
-			fmt.Fprintln(os.Stderr, dimStyle.Render(fmt.Sprintf("Pandoc conversion failed (%v). Keeping markdown output.", err)))
-			savedFiles = append(savedFiles, mdPath)
-		} else {
-			_ = os.Remove(mdPath)
-			savedFiles = append(savedFiles, docxPath)
-		}
+	var opts []llm.Option
+	if cfg.LLMModel != "" {
+		opts = append(opts, llm.WithModel(cfg.LLMModel))
+	}
+	return llm.NewClient(opts...), nil
+}
 
+// handleWizardOutput saves outputs based on the selected format and prints success.
+func handleWizardOutput(ctx context.Context, result *synth.Result, inputs *wizardInputs, cfg *WizardConfig) error {
+	// Build file paths.
+	docxPath := filepath.Join(cfg.OutputFolder, inputs.OutputName+".docx")
+	risPath := filepath.Join(cfg.OutputFolder, inputs.OutputName+".ris")
+	mdPath := filepath.Join(cfg.OutputFolder, inputs.OutputName+".md")
+
+	// Handle format-specific output.
+	switch inputs.OutputFormat {
 	case "markdown":
 		printMarkdownResult(result)
 		return nil
@@ -316,11 +349,50 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(result)
 
+	case "docx", "docx+ris":
+		savedFiles, err := saveDocxOutput(ctx, result, mdPath, docxPath, risPath, inputs.OutputFormat)
+		if err != nil {
+			return err
+		}
+		printWizardSuccess(result, savedFiles)
+		return nil
+
 	default:
-		return fmt.Errorf("unknown output format: %q", outputFormat)
+		return fmt.Errorf("unknown output format: %q", inputs.OutputFormat)
+	}
+}
+
+// saveDocxOutput handles saving docx and optionally ris files.
+func saveDocxOutput(ctx context.Context, result *synth.Result, mdPath, docxPath, risPath, format string) ([]string, error) {
+	var savedFiles []string
+
+	// Save markdown first (needed for pandoc conversion).
+	if err := saveMarkdownFile(mdPath, result); err != nil {
+		return nil, err
 	}
 
-	// Print success.
+	// Convert to docx.
+	if err := convertToDocxContext(ctx, mdPath, docxPath); err != nil {
+		fmt.Fprintln(os.Stderr, dimStyle.Render(fmt.Sprintf("Pandoc conversion failed (%v). Keeping markdown output.", err)))
+		savedFiles = append(savedFiles, mdPath)
+	} else {
+		_ = os.Remove(mdPath) // best-effort cleanup
+		savedFiles = append(savedFiles, docxPath)
+	}
+
+	// Save RIS if requested.
+	if format == "docx+ris" {
+		if err := os.WriteFile(risPath, []byte(result.RIS), 0o644); err != nil {
+			return nil, fmt.Errorf("write RIS: %w", err)
+		}
+		savedFiles = append(savedFiles, risPath)
+	}
+
+	return savedFiles, nil
+}
+
+// printWizardSuccess displays the success message and summary.
+func printWizardSuccess(result *synth.Result, savedFiles []string) {
 	fmt.Println()
 	fmt.Println(successStyle.Render("✓ Synthesis complete!"))
 	fmt.Println()
@@ -349,7 +421,6 @@ func runWizard(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(dimStyle.Render("Preview:"))
 	fmt.Println(boxStyle.Render(snippet))
-	return nil
 }
 
 func defaultOutputFormat(cfg WizardConfig) string {
@@ -415,6 +486,10 @@ func saveMarkdownFile(path string, result *synth.Result) error {
 		sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, ref.CitationAPA))
 	}
 	return os.WriteFile(path, []byte(sb.String()), 0o644)
+}
+
+func convertToDocx(mdPath, docxPath string) error {
+	return convertToDocxContext(context.Background(), mdPath, docxPath)
 }
 
 func convertToDocxContext(ctx context.Context, mdPath, docxPath string) error {
