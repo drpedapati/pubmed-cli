@@ -83,8 +83,8 @@ func TestFormatSearchEmpty(t *testing.T) {
 func TestFormatArticleJSON(t *testing.T) {
 	articles := []eutils.Article{
 		{
-			PMID:    "12345",
-			Title:   "Test Article",
+			PMID:     "12345",
+			Title:    "Test Article",
 			Abstract: "This is a test.",
 			Authors: []eutils.Author{
 				{LastName: "Smith", ForeName: "John", Initials: "J"},

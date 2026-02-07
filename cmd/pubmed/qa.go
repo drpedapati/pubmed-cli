@@ -20,6 +20,9 @@ var (
 	qaFlagModel      string
 	qaFlagBaseURL    string
 	qaFlagClaude     bool
+	qaFlagCodex      bool
+	qaFlagOpus       bool
+	qaFlagUnsafe     bool
 )
 
 func init() {
@@ -29,7 +32,10 @@ func init() {
 	qaCmd.Flags().BoolVarP(&qaFlagExplain, "explain", "e", false, "Show reasoning and sources")
 	qaCmd.Flags().StringVar(&qaFlagModel, "model", "", "LLM model (default: gpt-4o or LLM_MODEL env)")
 	qaCmd.Flags().StringVar(&qaFlagBaseURL, "llm-url", "", "LLM API base URL (default: LLM_BASE_URL env)")
-	qaCmd.Flags().BoolVar(&qaFlagClaude, "claude", false, "Use Claude API (requires ANTHROPIC_API_KEY)")
+	qaCmd.Flags().BoolVar(&qaFlagClaude, "claude", false, "Use Claude CLI (no API key needed)")
+	qaCmd.Flags().BoolVar(&qaFlagCodex, "codex", false, "Use OpenAI Codex CLI (no API key needed)")
+	qaCmd.Flags().BoolVar(&qaFlagOpus, "opus", false, "Use Claude Opus model (with --claude)")
+	qaCmd.Flags().BoolVar(&qaFlagUnsafe, "unsafe", false, "Enable full LLM access (DANGEROUS: bypasses sandbox)")
 
 	rootCmd.AddCommand(qaCmd)
 }
@@ -65,13 +71,47 @@ type LLMCompleter interface {
 func runQA(cmd *cobra.Command, args []string) error {
 	question := strings.Join(args, " ")
 
+	// Validate mutually exclusive flags.
+	if qaFlagClaude && qaFlagCodex {
+		return fmt.Errorf("--claude and --codex are mutually exclusive")
+	}
+
+	// Determine security config for LLM clients.
+	// QA uses read-only by default (safest for question-answering).
+	securityCfg := llm.ForQA()
+	if qaFlagUnsafe {
+		fmt.Fprintln(cmd.ErrOrStderr(), "⚠️  WARNING: --unsafe enables full LLM access. The model can execute arbitrary commands.")
+		securityCfg = securityCfg.WithFullAccess()
+	}
+
 	// Build LLM client
 	var llmClient LLMCompleter
 	var err error
 
-	if qaFlagClaude {
+	if qaFlagCodex {
+		// Use Codex via OAuth tokens from ChatGPT account
+		codexOpts := []llm.CodexOption{
+			llm.WithSecurityConfig(securityCfg),
+		}
+		if qaFlagModel != "" {
+			codexOpts = append(codexOpts, llm.WithCodexModel(qaFlagModel))
+		}
+		llmClient, err = llm.NewCodexClient(codexOpts...)
+		if err != nil {
+			return fmt.Errorf("codex setup: %w", err)
+		}
+	} else if qaFlagClaude {
 		// Use Claude via OAuth tokens from keychain
-		llmClient, err = llm.NewClaudeClient(qaFlagModel)
+		claudeOpts := []llm.ClaudeOption{
+			llm.WithClaudeSecurityConfig(securityCfg),
+		}
+		if qaFlagModel != "" {
+			claudeOpts = append(claudeOpts, llm.WithClaudeModel(qaFlagModel))
+		}
+		if qaFlagOpus {
+			claudeOpts = append(claudeOpts, llm.WithOpus(true))
+		}
+		llmClient, err = llm.NewClaudeClientWithOptions(claudeOpts...)
 		if err != nil {
 			return fmt.Errorf("claude setup: %w", err)
 		}

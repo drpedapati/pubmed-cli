@@ -70,7 +70,12 @@ type Reference struct {
 	Abstract       string `json:"abstract,omitempty"`
 	Year           string `json:"year"`
 	Authors        string `json:"authors"`
-	Journal        string `json:"journal"`
+
+	// AuthorsList holds the full author list in BibTeX-friendly "Last, First" form.
+	// It is internal-only and intentionally excluded from JSON output.
+	AuthorsList []string `json:"-"`
+
+	Journal string `json:"journal"`
 }
 
 // Result contains the synthesis output.
@@ -92,11 +97,37 @@ type TokenUsage struct {
 	Total  int `json:"total"`
 }
 
+// ProgressPhase indicates where we are in the synthesis pipeline.
+type ProgressPhase string
+
+const (
+	ProgressSearch    ProgressPhase = "search"
+	ProgressFetch     ProgressPhase = "fetch"
+	ProgressScore     ProgressPhase = "score"
+	ProgressFilter    ProgressPhase = "filter"
+	ProgressSynthesis ProgressPhase = "synthesis"
+	ProgressRIS       ProgressPhase = "ris"
+)
+
+// ProgressUpdate is emitted as the engine advances through the workflow.
+// Current/Total are primarily used for per-paper scoring updates.
+type ProgressUpdate struct {
+	Phase   ProgressPhase
+	Message string
+	Current int
+	Total   int
+}
+
+// ProgressCallback receives progress updates from the engine.
+// It must be fast and must not block.
+type ProgressCallback func(ProgressUpdate)
+
 // Engine performs literature synthesis.
 type Engine struct {
-	llm    LLMClient
-	eutils *eutils.Client
-	cfg    Config
+	llm      LLMClient
+	eutils   *eutils.Client
+	cfg      Config
+	progress ProgressCallback
 }
 
 // NewEngine creates a new synthesis engine.
@@ -106,6 +137,24 @@ func NewEngine(llmClient LLMClient, eutilsClient *eutils.Client, cfg Config) *En
 		eutils: eutilsClient,
 		cfg:    cfg,
 	}
+}
+
+// WithProgress sets an optional progress callback.
+//
+// The callback must be fast and must not block.
+func (e *Engine) WithProgress(cb ProgressCallback) *Engine {
+	if e == nil {
+		return nil
+	}
+	e.progress = cb
+	return e
+}
+
+func (e *Engine) report(update ProgressUpdate) {
+	if e == nil || e.progress == nil {
+		return
+	}
+	e.progress(update)
 }
 
 // Synthesize performs the full synthesis workflow.
@@ -131,6 +180,7 @@ func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, erro
 	result := &Result{Question: question}
 
 	// Step 1: Search PubMed
+	e.report(ProgressUpdate{Phase: ProgressSearch, Message: "Searching PubMed..."})
 	searchResult, err := e.eutils.Search(ctx, question, &eutils.SearchOptions{Limit: e.cfg.PapersToSearch})
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
@@ -145,6 +195,7 @@ func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, erro
 	}
 
 	// Step 2: Fetch articles
+	e.report(ProgressUpdate{Phase: ProgressFetch, Message: "Fetching paper metadata..."})
 	articles, err := e.eutils.Fetch(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
@@ -154,6 +205,9 @@ func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, erro
 	}
 
 	// Step 3: Score relevance
+	if n := len(articles); n > 0 {
+		e.report(ProgressUpdate{Phase: ProgressScore, Message: fmt.Sprintf("Scoring paper %d/%d for relevance...", 1, n), Current: 0, Total: n})
+	}
 	scored, tokensUsed, err := e.scoreRelevance(ctx, question, articles)
 	if err != nil {
 		return nil, fmt.Errorf("relevance scoring: %w", err)
@@ -162,6 +216,7 @@ func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, erro
 	result.Tokens.Input += tokensUsed
 
 	// Step 4: Filter and sort by relevance
+	e.report(ProgressUpdate{Phase: ProgressFilter, Message: fmt.Sprintf("Filtering to top %d papers...", e.cfg.PapersToUse)})
 	var relevant []ScoredPaper
 	for _, sp := range scored {
 		if sp.RelevanceScore >= e.cfg.RelevanceThreshold {
@@ -189,6 +244,7 @@ func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, erro
 	}
 
 	// Step 6: Generate synthesis
+	e.report(ProgressUpdate{Phase: ProgressSynthesis, Message: "Generating synthesis..."})
 	synthesis, tokens, err := e.generateSynthesis(ctx, question, relevant)
 	if err != nil {
 		return nil, fmt.Errorf("synthesis: %w", err)
@@ -198,6 +254,7 @@ func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, erro
 	result.Tokens.Output += tokens.Output
 
 	// Step 7: Generate RIS
+	e.report(ProgressUpdate{Phase: ProgressRIS, Message: "Generating RIS..."})
 	result.RIS = GenerateRIS(result.References)
 	result.Tokens.Total = result.Tokens.Input + result.Tokens.Output
 	return result, nil
@@ -294,7 +351,11 @@ func (e *Engine) scoreRelevance(ctx context.Context, question string, articles [
 	totalTokens := 0
 	var firstErr error
 	errCount := 0
+	total := len(articles)
 	for i := range articles {
+		// Emit a progress event *before* each call so the UI can show what we're about to score.
+		e.report(ProgressUpdate{Phase: ProgressScore, Message: fmt.Sprintf("Scoring paper %d/%d for relevance...", i+1, total), Current: i, Total: total})
+
 		article := &articles[i]
 		score, tokens, err := scoreArticleRelevance(ctx, e.llm, question, article)
 		if err != nil {
@@ -312,6 +373,9 @@ func (e *Engine) scoreRelevance(ctx context.Context, question string, articles [
 		}
 		totalTokens += tokens
 		scored = append(scored, ScoredPaper{Article: *article, RelevanceScore: score})
+
+		// Emit a second event after scoring so the progress bar can advance.
+		e.report(ProgressUpdate{Phase: ProgressScore, Message: fmt.Sprintf("Scoring paper %d/%d for relevance...", i+1, total), Current: i + 1, Total: total})
 	}
 	if len(articles) > 0 && errCount == len(articles) {
 		return nil, totalTokens, fmt.Errorf("relevance scoring failed for all %d articles: %w", errCount, firstErr)
@@ -398,6 +462,11 @@ func buildReference(article eutils.Article, num int, relevance int) Reference {
 		}
 	}
 
+	authorsList := make([]string, 0, len(article.Authors))
+	for _, a := range article.Authors {
+		authorsList = append(authorsList, bibtexAuthorFromName(a.FullName()))
+	}
+
 	apa := formatAPA(article)
 
 	key := fmt.Sprintf("%d", num)
@@ -419,6 +488,7 @@ func buildReference(article eutils.Article, num int, relevance int) Reference {
 		Abstract:       article.Abstract,
 		Year:           article.Year,
 		Authors:        authorStr,
+		AuthorsList:    authorsList,
 		Journal:        article.Journal,
 	}
 }

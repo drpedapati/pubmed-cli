@@ -9,8 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/henrybloomingdale/pubmed-cli/internal/llm"
 	"github.com/henrybloomingdale/pubmed-cli/internal/synth"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -21,11 +26,15 @@ var (
 	synthFlagWords     int
 	synthFlagDocx      string
 	synthFlagRIS       string
+	synthFlagBibTeX    string
 	synthFlagPMID      string
 	synthFlagModel     string
 	synthFlagBaseURL   string
 	synthFlagClaude    bool
+	synthFlagCodex     bool
+	synthFlagOpus      bool
 	synthFlagMd        bool
+	synthFlagUnsafe    bool
 )
 
 func init() {
@@ -35,11 +44,15 @@ func init() {
 	synthCmd.Flags().IntVar(&synthFlagWords, "words", 250, "Target word count")
 	synthCmd.Flags().StringVar(&synthFlagDocx, "docx", "", "Output Word document")
 	synthCmd.Flags().StringVar(&synthFlagRIS, "ris", "", "Output RIS file for reference managers")
+	synthCmd.Flags().StringVar(&synthFlagBibTeX, "bibtex", "", "Output BibTeX file for LaTeX workflows")
 	synthCmd.Flags().StringVar(&synthFlagPMID, "pmid", "", "Deep dive on single paper by PMID")
 	synthCmd.Flags().StringVar(&synthFlagModel, "model", "", "LLM model (default: gpt-4o or LLM_MODEL env)")
 	synthCmd.Flags().StringVar(&synthFlagBaseURL, "llm-url", "", "LLM API base URL")
 	synthCmd.Flags().BoolVar(&synthFlagClaude, "claude", false, "Use Claude CLI (no API key needed)")
+	synthCmd.Flags().BoolVar(&synthFlagCodex, "codex", false, "Use OpenAI Codex CLI (no API key needed)")
+	synthCmd.Flags().BoolVar(&synthFlagOpus, "opus", false, "Use Claude Opus model (with --claude)")
 	synthCmd.Flags().BoolVar(&synthFlagMd, "md", false, "Output markdown to stdout (default if no --docx)")
+	synthCmd.Flags().BoolVar(&synthFlagUnsafe, "unsafe", false, "Enable full LLM access (DANGEROUS: bypasses sandbox)")
 
 	rootCmd.AddCommand(synthCmd)
 }
@@ -55,6 +68,9 @@ Examples:
 
   # Word document + RIS file
   pubmed synth "CBT for pediatric anxiety" --docx review.docx --ris refs.ris
+
+  # BibTeX export
+  pubmed synth "CBT for pediatric anxiety" --bibtex refs.bib
 
   # More papers, longer output
   pubmed synth "autism biomarkers" --papers 10 --words 500
@@ -100,11 +116,44 @@ func runSynth(cmd *cobra.Command, args []string) error {
 		synthFlagSearch = synthFlagPapers
 	}
 
+	// Validate mutually exclusive flags.
+	if synthFlagClaude && synthFlagCodex {
+		return fmt.Errorf("--claude and --codex are mutually exclusive")
+	}
+
+	// Determine security config for LLM clients.
+	// Synthesis uses read-only by default (sufficient for generating text).
+	securityCfg := llm.ForSynthesis()
+	if synthFlagUnsafe {
+		fmt.Fprintln(cmd.ErrOrStderr(), "⚠️  WARNING: --unsafe enables full LLM access. The model can execute arbitrary commands.")
+		securityCfg = securityCfg.WithFullAccess()
+	}
+
 	// Build LLM client.
 	var llmClient synth.LLMClient
 	var err error
-	if synthFlagClaude {
-		llmClient, err = llm.NewClaudeClient(synthFlagModel)
+	if synthFlagCodex {
+		codexOpts := []llm.CodexOption{
+			llm.WithSecurityConfig(securityCfg),
+		}
+		if synthFlagModel != "" {
+			codexOpts = append(codexOpts, llm.WithCodexModel(synthFlagModel))
+		}
+		llmClient, err = llm.NewCodexClient(codexOpts...)
+		if err != nil {
+			return fmt.Errorf("codex setup: %w", err)
+		}
+	} else if synthFlagClaude {
+		claudeOpts := []llm.ClaudeOption{
+			llm.WithClaudeSecurityConfig(securityCfg),
+		}
+		if synthFlagModel != "" {
+			claudeOpts = append(claudeOpts, llm.WithClaudeModel(synthFlagModel))
+		}
+		if synthFlagOpus {
+			claudeOpts = append(claudeOpts, llm.WithOpus(true))
+		}
+		llmClient, err = llm.NewClaudeClientWithOptions(claudeOpts...)
 		if err != nil {
 			return fmt.Errorf("claude setup: %w", err)
 		}
@@ -129,14 +178,73 @@ func runSynth(cmd *cobra.Command, args []string) error {
 	// Build engine.
 	engine := synth.NewEngine(llmClient, newEutilsClient(), cfg)
 
-	// Run synthesis.
+	// Context for cancellation (e.g., Ctrl+C in the progress UI).
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+
+	// Run synthesis (optionally with a Charm progress UI).
 	var result *synth.Result
-	ctx := cmd.Context()
-	if pmid != "" {
-		result, err = engine.SynthesizePMID(ctx, pmid)
+	question := strings.TrimSpace(strings.Join(args, " "))
+
+	useTUI := isatty.IsTerminal(os.Stderr.Fd()) && isatty.IsTerminal(os.Stdin.Fd())
+	if useTUI {
+		progressCh := make(chan synth.ProgressUpdate, 1024)
+		engine.WithProgress(func(u synth.ProgressUpdate) {
+			// Never block the engine on UI updates.
+			select {
+			case progressCh <- u:
+			default:
+			}
+		})
+
+		out := make(chan struct {
+			res *synth.Result
+			err error
+		}, 1)
+
+		go func() {
+			defer close(progressCh)
+			var r *synth.Result
+			var e error
+			if pmid != "" {
+				r, e = engine.SynthesizePMID(ctx, pmid)
+			} else {
+				r, e = engine.Synthesize(ctx, question)
+			}
+			out <- struct {
+				res *synth.Result
+				err error
+			}{res: r, err: e}
+		}()
+
+		p := tea.NewProgram(
+			newSynthProgressModel(progressCh, cancel),
+			tea.WithOutput(os.Stderr),
+		)
+		if _, uiErr := p.Run(); uiErr != nil {
+			cancel()
+			o := <-out
+			_ = o
+			return uiErr
+		}
+		o := <-out
+		result, err = o.res, o.err
 	} else {
-		question := strings.TrimSpace(strings.Join(args, " "))
-		result, err = engine.Synthesize(ctx, question)
+		// Plain-text progress for piped output/logs.
+		lastMsg := ""
+		engine.WithProgress(func(u synth.ProgressUpdate) {
+			// Dedupe by message text (engine emits same message with different Current values)
+			if u.Message != "" && u.Message != lastMsg {
+				lastMsg = u.Message
+				fmt.Fprintln(os.Stderr, u.Message)
+			}
+		})
+
+		if pmid != "" {
+			result, err = engine.SynthesizePMID(ctx, pmid)
+		} else {
+			result, err = engine.Synthesize(ctx, question)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("synthesize: %w", err)
@@ -154,6 +262,18 @@ func runSynth(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("write RIS file: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "✓ Wrote %s (%d references)\n", synthFlagRIS, len(result.References))
+	}
+
+	// Write BibTeX file if requested.
+	if synthFlagBibTeX != "" {
+		bibtex := synth.GenerateBibTeX(result.References)
+		if err := os.MkdirAll(filepath.Dir(synthFlagBibTeX), 0o755); err != nil {
+			return fmt.Errorf("create BibTeX dir: %w", err)
+		}
+		if err := os.WriteFile(synthFlagBibTeX, []byte(bibtex), 0o644); err != nil {
+			return fmt.Errorf("write BibTeX file: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "✓ Wrote %s (%d references)\n", synthFlagBibTeX, len(result.References))
 	}
 
 	// Write DOCX if requested.
@@ -188,7 +308,16 @@ func outputJSON(result *synth.Result) error {
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+
+	// Add BibTeX to the JSON output without changing the core synth.Result contract.
+	out := struct {
+		*synth.Result
+		BibTeX string `json:"bibtex,omitempty"`
+	}{
+		Result: result,
+		BibTeX: synth.GenerateBibTeX(result.References),
+	}
+	return enc.Encode(out)
 }
 
 func outputMarkdown(result *synth.Result) error {
@@ -277,4 +406,100 @@ func writeDocx(ctx context.Context, filename string, result *synth.Result) error
 		return &docxFallbackWarning{DocxPath: filename, MarkdownPath: mdOut, Cause: err}
 	}
 	return nil
+}
+
+// --- progress UI (Charm) ---
+
+type synthProgressMsg synth.ProgressUpdate
+
+type synthProgressDoneMsg struct{}
+
+type synthProgressModel struct {
+	ch     <-chan synth.ProgressUpdate
+	cancel context.CancelFunc
+
+	spinner spinner.Model
+	bar     progress.Model
+
+	phase   synth.ProgressPhase
+	message string
+	current int
+	total   int
+}
+
+func newSynthProgressModel(ch <-chan synth.ProgressUpdate, cancel context.CancelFunc) synthProgressModel {
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	bar := progress.New(progress.WithDefaultGradient())
+	bar.Width = 32
+
+	return synthProgressModel{
+		ch:      ch,
+		cancel:  cancel,
+		spinner: sp,
+		bar:     bar,
+		message: "Working...",
+	}
+}
+
+func (m synthProgressModel) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, waitSynthProgress(m.ch))
+}
+
+func waitSynthProgress(ch <-chan synth.ProgressUpdate) tea.Cmd {
+	return func() tea.Msg {
+		u, ok := <-ch
+		if !ok {
+			return synthProgressDoneMsg{}
+		}
+		return synthProgressMsg(u)
+	}
+}
+
+func (m synthProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "esc", "q":
+			if m.cancel != nil {
+				m.cancel()
+			}
+			return m, tea.Quit
+		}
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
+	case synthProgressMsg:
+		u := synth.ProgressUpdate(msg)
+		m.phase = u.Phase
+		if strings.TrimSpace(u.Message) != "" {
+			m.message = u.Message
+		}
+		m.current = u.Current
+		m.total = u.Total
+		return m, waitSynthProgress(m.ch)
+
+	case synthProgressDoneMsg:
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m synthProgressModel) View() string {
+	bold := lipgloss.NewStyle().Bold(true)
+	subtle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	line := fmt.Sprintf("%s %s", m.spinner.View(), bold.Render(m.message))
+	if m.phase == synth.ProgressScore && m.total > 0 {
+		pct := float64(m.current) / float64(m.total)
+		bar := m.bar.ViewAs(pct)
+		count := subtle.Render(fmt.Sprintf(" %d/%d", m.current, m.total))
+		return line + "\n" + bar + count + "\n"
+	}
+	return line + "\n"
 }

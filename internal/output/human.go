@@ -14,15 +14,15 @@ import (
 // --- Styles ---
 
 var (
-	cyan      = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	bold      = lipgloss.NewStyle().Bold(true)
-	boldCyan  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	dim       = lipgloss.NewStyle().Faint(true)
-	green     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	yellow    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	magenta   = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
+	cyan       = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	bold       = lipgloss.NewStyle().Bold(true)
+	boldCyan   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	dim        = lipgloss.NewStyle().Faint(true)
+	green      = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	yellow     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	magenta    = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
 	labelStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
-	boxStyle  = lipgloss.NewStyle().
+	boxStyle   = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("6")).
 			Padding(0, 1)
@@ -137,7 +137,7 @@ func formatArticlesHuman(w io.Writer, articles []eutils.Article, full bool) erro
 
 		// Title card
 		titleLine := bold.Render(a.Title)
-		meta := cyan.Render("PMID: "+a.PMID)
+		meta := cyan.Render("PMID: " + a.PMID)
 		if a.Year != "" {
 			meta += dim.Render(" · ") + a.Year
 		}

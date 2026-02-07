@@ -12,23 +12,23 @@ type SearchResult struct {
 
 // Article represents a PubMed article with parsed fields.
 type Article struct {
-	PMID             string           `json:"pmid"`
-	Title            string           `json:"title"`
-	Abstract         string           `json:"abstract"`
+	PMID             string            `json:"pmid"`
+	Title            string            `json:"title"`
+	Abstract         string            `json:"abstract"`
 	AbstractSections []AbstractSection `json:"abstract_sections,omitempty"`
-	Authors          []Author         `json:"authors"`
-	Journal          string           `json:"journal"`
-	JournalAbbrev    string           `json:"journal_abbrev"`
-	Volume           string           `json:"volume,omitempty"`
-	Issue            string           `json:"issue,omitempty"`
-	Pages            string           `json:"pages,omitempty"`
-	Year             string           `json:"year"`
-	Month            string           `json:"month,omitempty"`
-	DOI              string           `json:"doi,omitempty"`
-	PMCID            string           `json:"pmcid,omitempty"`
-	MeSHTerms        []MeSHTerm       `json:"mesh_terms,omitempty"`
-	PublicationTypes []string         `json:"publication_types"`
-	Language         string           `json:"language"`
+	Authors          []Author          `json:"authors"`
+	Journal          string            `json:"journal"`
+	JournalAbbrev    string            `json:"journal_abbrev"`
+	Volume           string            `json:"volume,omitempty"`
+	Issue            string            `json:"issue,omitempty"`
+	Pages            string            `json:"pages,omitempty"`
+	Year             string            `json:"year"`
+	Month            string            `json:"month,omitempty"`
+	DOI              string            `json:"doi,omitempty"`
+	PMCID            string            `json:"pmcid,omitempty"`
+	MeSHTerms        []MeSHTerm        `json:"mesh_terms,omitempty"`
+	PublicationTypes []string          `json:"publication_types"`
+	Language         string            `json:"language"`
 }
 
 // AbstractSection represents a labeled section of a structured abstract.

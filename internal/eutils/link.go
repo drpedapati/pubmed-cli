@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	linkCitedIn  = "pubmed_pubmed_citedin"
-	linkRefs     = "pubmed_pubmed_refs"
-	linkRelated  = "pubmed_pubmed"
+	linkCitedIn = "pubmed_pubmed_citedin"
+	linkRefs    = "pubmed_pubmed_refs"
+	linkRelated = "pubmed_pubmed"
 )
 
 // ELink JSON response structures.
@@ -26,9 +26,9 @@ type elinkLinkSet struct {
 }
 
 type elinkLinkSetDB struct {
-	DbTo     string          `json:"dbto"`
-	LinkName string          `json:"linkname"`
-	Links    []elinkLink     `json:"links"`
+	DbTo     string      `json:"dbto"`
+	LinkName string      `json:"linkname"`
+	Links    []elinkLink `json:"links"`
 }
 
 // elinkLink handles both plain string IDs and {id, score} objects.

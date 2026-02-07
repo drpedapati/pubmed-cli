@@ -88,11 +88,11 @@ type xmlAuthorList struct {
 }
 
 type xmlAuthor struct {
-	ValidYN         string              `xml:"ValidYN,attr"`
-	LastName        string              `xml:"LastName"`
-	ForeName        string              `xml:"ForeName"`
-	Initials        string              `xml:"Initials"`
-	CollectiveName  string              `xml:"CollectiveName"`
+	ValidYN         string               `xml:"ValidYN,attr"`
+	LastName        string               `xml:"LastName"`
+	ForeName        string               `xml:"ForeName"`
+	Initials        string               `xml:"Initials"`
+	CollectiveName  string               `xml:"CollectiveName"`
 	AffiliationInfo []xmlAffiliationInfo `xml:"AffiliationInfo"`
 }
 

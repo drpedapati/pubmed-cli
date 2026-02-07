@@ -26,13 +26,13 @@ const (
 
 // Result contains the QA result and metadata.
 type Result struct {
-	Question       string   `json:"question"`
-	Answer         string   `json:"answer"`
-	Confidence     int      `json:"confidence,omitempty"`
-	Strategy       Strategy `json:"strategy"`
-	NovelDetected  bool     `json:"novel_detected"`
-	SourcePMIDs    []string `json:"source_pmids,omitempty"`
-	MinifiedContext string  `json:"context,omitempty"`
+	Question        string   `json:"question"`
+	Answer          string   `json:"answer"`
+	Confidence      int      `json:"confidence,omitempty"`
+	Strategy        Strategy `json:"strategy"`
+	NovelDetected   bool     `json:"novel_detected"`
+	SourcePMIDs     []string `json:"source_pmids,omitempty"`
+	MinifiedContext string   `json:"context,omitempty"`
 }
 
 // Config controls adaptive retrieval behavior.
@@ -148,7 +148,7 @@ func ExpandQuery(question string) string {
 		q = strings.Replace(q, p, "", 1)
 		q = strings.Replace(q, strings.ToLower(p), "", 1)
 	}
-	
+
 	// Trim before checking question words
 	q = strings.TrimSpace(q)
 

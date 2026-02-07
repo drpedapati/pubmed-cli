@@ -2,6 +2,20 @@
 
 All notable changes to pubmed-cli will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Codex CLI integration (`--codex` flag)
+- Claude Opus model support (`--opus` flag)
+- Input sanitization for prompt injection protection
+- Sandbox mode selection for Codex
+- `--unsafe` flag for full sandbox access
+
+### Security
+- Added prompt validation and sanitization
+- Default to read-only sandbox for QA commands
+- Reject suspicious prompt patterns
+
 ## [0.5.1] - 2026-02-07
 
 ### Fixed

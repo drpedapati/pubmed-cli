@@ -114,6 +114,33 @@ This approach:
 
 Install Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
+### LLM Backend Options
+
+| Flag | Description |
+|------|-------------|
+| `--claude` | Use Claude CLI (OAuth, no API key) |
+| `--codex` | Use Codex CLI (ChatGPT OAuth, no API key) |
+| `--opus` | Use Claude Opus model (slower, more capable) |
+| `--unsafe` | Enable full sandbox access (use with caution) |
+
+### Optional CLI Backends
+
+Both Claude CLI and Codex CLI are **optional** — only install what you need:
+
+**Claude CLI** (Anthropic):
+```bash
+npm install -g @anthropic-ai/claude-code
+claude auth login
+```
+
+**Codex CLI** (OpenAI):
+```bash
+npm install -g @openai/codex
+codex auth login
+```
+
+These CLIs handle OAuth internally, so you don't need API keys. Use `--claude` or `--codex` flags to select the backend.
+
 ## 🚀 Commands
 
 ### wizard — Interactive synthesis wizard ✨
@@ -330,6 +357,24 @@ tools = [
 | Agentic | LLM decides what to search → fetches → reasons | Retrieves what's *needed* for the question |
 
 The `qa` command implements **confidence-gated adaptive retrieval**: the model only retrieves when it's uncertain, avoiding unnecessary API calls for well-established knowledge while ensuring accuracy on novel or obscure topics.
+
+## 🔒 Security
+
+pubmed-cli integrates with Claude and Codex CLIs by shelling out to their binaries.
+
+### Input Sanitization
+- All prompts are validated before execution
+- Shell injection patterns are rejected
+- Prompt injection attempts are detected and blocked
+
+### Sandbox Modes
+- QA commands use read-only sandbox by default
+- Synthesis commands may require full access for complex operations
+- Use `--unsafe` flag only when necessary
+
+### Threat Model
+- Trusted user environment assumed
+- Not designed for untrusted/public-facing use without additional sandboxing
 
 ## 📋 Global Flags
 
