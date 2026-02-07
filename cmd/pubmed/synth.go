@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/henrybloomingdale/pubmed-cli/internal/llm"
@@ -38,7 +39,7 @@ func init() {
 	synthCmd.Flags().StringVar(&synthFlagModel, "model", "", "LLM model (default: gpt-4o or LLM_MODEL env)")
 	synthCmd.Flags().StringVar(&synthFlagBaseURL, "llm-url", "", "LLM API base URL")
 	synthCmd.Flags().BoolVar(&synthFlagClaude, "claude", false, "Use Claude CLI (no API key needed)")
-	synthCmd.Flags().BoolVar(&synthFlagMd, "md", false, "Output markdown (default if no --docx)")
+	synthCmd.Flags().BoolVar(&synthFlagMd, "md", false, "Output markdown to stdout (default if no --docx)")
 
 	rootCmd.AddCommand(synthCmd)
 }
@@ -68,20 +69,40 @@ Environment:
   LLM_API_KEY   - API key for LLM
   LLM_BASE_URL  - Base URL for OpenAI-compatible API
   LLM_MODEL     - Model name (default: gpt-4o)`,
-	Args: cobra.MaximumNArgs(1),
+	Args: cobra.ArbitraryArgs,
 	RunE: runSynth,
 }
 
 func runSynth(cmd *cobra.Command, args []string) error {
-	// Validate args
-	if synthFlagPMID == "" && len(args) == 0 {
+	// Validate args.
+	pmid := strings.TrimSpace(synthFlagPMID)
+	if pmid == "" && len(args) == 0 {
 		return fmt.Errorf("provide a question or use --pmid for single paper")
 	}
+	if pmid != "" && len(args) > 0 {
+		return fmt.Errorf("provide either a question or --pmid, not both")
+	}
 
-	// Build LLM client
+	if synthFlagPapers < 1 {
+		return fmt.Errorf("--papers must be >= 1")
+	}
+	if synthFlagSearch < 1 {
+		return fmt.Errorf("--search must be >= 1")
+	}
+	if synthFlagWords < 1 {
+		return fmt.Errorf("--words must be >= 1")
+	}
+	if synthFlagRelevance < 1 || synthFlagRelevance > 10 {
+		return fmt.Errorf("--relevance must be 1-10")
+	}
+	if synthFlagPapers > synthFlagSearch {
+		// Avoid accidentally filtering down to fewer than requested.
+		synthFlagSearch = synthFlagPapers
+	}
+
+	// Build LLM client.
 	var llmClient synth.LLMClient
 	var err error
-
 	if synthFlagClaude {
 		llmClient, err = llm.NewClaudeClient(synthFlagModel)
 		if err != nil {
@@ -98,135 +119,162 @@ func runSynth(cmd *cobra.Command, args []string) error {
 		llmClient = llm.NewClient(llmOpts...)
 	}
 
-	// Build config
+	// Build config.
 	cfg := synth.DefaultConfig()
 	cfg.PapersToUse = synthFlagPapers
 	cfg.PapersToSearch = synthFlagSearch
 	cfg.RelevanceThreshold = synthFlagRelevance
 	cfg.TargetWords = synthFlagWords
 
-	// Build engine
+	// Build engine.
 	engine := synth.NewEngine(llmClient, newEutilsClient(), cfg)
 
-	// Run synthesis
+	// Run synthesis.
 	var result *synth.Result
 	ctx := cmd.Context()
-
-	if synthFlagPMID != "" {
-		result, err = engine.SynthesizePMID(ctx, synthFlagPMID)
+	if pmid != "" {
+		result, err = engine.SynthesizePMID(ctx, pmid)
 	} else {
-		question := strings.Join(args, " ")
+		question := strings.TrimSpace(strings.Join(args, " "))
 		result, err = engine.Synthesize(ctx, question)
 	}
-
 	if err != nil {
-		return err
+		return fmt.Errorf("synthesize: %w", err)
+	}
+	if result == nil {
+		return errors.New("synthesis returned nil result")
 	}
 
-	// Write RIS file if requested
+	// Write RIS file if requested.
 	if synthFlagRIS != "" {
-		if err := os.WriteFile(synthFlagRIS, []byte(result.RIS), 0644); err != nil {
+		if err := os.MkdirAll(filepath.Dir(synthFlagRIS), 0o755); err != nil {
+			return fmt.Errorf("create RIS dir: %w", err)
+		}
+		if err := os.WriteFile(synthFlagRIS, []byte(result.RIS), 0o644); err != nil {
 			return fmt.Errorf("write RIS file: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "✓ Wrote %s (%d references)\n", synthFlagRIS, len(result.References))
 	}
 
-	// Write DOCX if requested
+	// Write DOCX if requested.
 	if synthFlagDocx != "" {
-		if err := writeDocx(synthFlagDocx, result); err != nil {
-			return fmt.Errorf("write DOCX: %w", err)
+		if err := writeDocx(ctx, synthFlagDocx, result); err != nil {
+			var w *docxFallbackWarning
+			if errors.As(err, &w) {
+				fmt.Fprintln(os.Stderr, w.Error())
+			} else {
+				return fmt.Errorf("write DOCX: %w", err)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "✓ Wrote %s\n", synthFlagDocx)
 		}
-		fmt.Fprintf(os.Stderr, "✓ Wrote %s\n", synthFlagDocx)
 	}
 
-	// Output
+	// Output.
 	if flagJSON {
 		return outputJSON(result)
 	}
-
-	// Default to markdown
+	// If the user requested a file output, default to being quiet unless --md is set.
+	if synthFlagDocx != "" && !synthFlagMd {
+		return nil
+	}
 	return outputMarkdown(result)
 }
 
 func outputJSON(result *synth.Result) error {
+	if result == nil {
+		return errors.New("result is nil")
+	}
+
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)
 }
 
 func outputMarkdown(result *synth.Result) error {
+	if result == nil {
+		return errors.New("result is nil")
+	}
+
 	var sb strings.Builder
 
-	// Header
+	// Header.
 	sb.WriteString(fmt.Sprintf("# %s\n\n", result.Question))
 
-	// Stats
-	sb.WriteString(fmt.Sprintf("*Searched %d papers, scored %d, used %d (relevance ≥ threshold)*\n\n",
+	// Stats.
+	sb.WriteString(fmt.Sprintf("*Searched %d papers, scored %d, used %d*\n\n",
 		result.PapersSearched, result.PapersScored, result.PapersUsed))
 
-	// Synthesis
+	// Synthesis.
 	sb.WriteString("## Synthesis\n\n")
 	sb.WriteString(result.Synthesis)
 	sb.WriteString("\n\n")
 
-	// References
+	// References.
 	sb.WriteString("## References\n\n")
 	for i, ref := range result.References {
 		sb.WriteString(fmt.Sprintf("%d. %s (relevance: %d/10) [PMID: %s]\n",
 			i+1, ref.CitationAPA, ref.RelevanceScore, ref.PMID))
 	}
 
-	// Token usage
+	// Token usage.
 	sb.WriteString(fmt.Sprintf("\n---\n*Tokens: ~%d input, ~%d output, ~%d total*\n",
 		result.Tokens.Input, result.Tokens.Output, result.Tokens.Total))
 
-	fmt.Println(sb.String())
-	return nil
+	_, err := fmt.Fprint(os.Stdout, sb.String())
+	return err
 }
+
+type docxFallbackWarning struct {
+	DocxPath     string
+	MarkdownPath string
+	Cause        error
+}
+
+func (w *docxFallbackWarning) Error() string {
+	return fmt.Sprintf("DOCX conversion failed; wrote markdown instead: %s (requested DOCX: %s): %v", w.MarkdownPath, w.DocxPath, w.Cause)
+}
+
+func (w *docxFallbackWarning) Unwrap() error { return w.Cause }
 
 // writeDocx creates a Word document with synthesis and references.
-func writeDocx(filename string, result *synth.Result) error {
-	// For now, we'll use a simple approach with the docx package
-	// This is a placeholder - we'll implement properly
-	
-	// Create simple DOCX content
-	content := fmt.Sprintf(`%s
-
-%s
-
-References
-
-%s`,
-		result.Question,
-		result.Synthesis,
-		formatReferencesForDocx(result.References))
-
-	// Write as markdown for now (proper DOCX needs external package)
-	// TODO: Use proper DOCX library
-	mdFile := strings.TrimSuffix(filename, ".docx") + ".md"
-	if err := os.WriteFile(mdFile, []byte(content), 0644); err != nil {
-		return err
+// Implementation strategy: write a temporary markdown file and convert via pandoc.
+func writeDocx(ctx context.Context, filename string, result *synth.Result) error {
+	// convertToDocx accepts a context for cancellation.
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return errors.New("filename is required")
 	}
-	
-	// Try to convert with pandoc if available
-	if _, err := os.Stat("/opt/homebrew/bin/pandoc"); err == nil {
-		ctx := context.Background()
-		return convertWithPandoc(ctx, mdFile, filename)
+	if strings.HasSuffix(filename, "/") || strings.HasSuffix(filename, "\\") {
+		return errors.New("filename must be a file path, not a directory")
+	}
+	if result == nil {
+		return errors.New("result is nil")
 	}
 
-	fmt.Fprintf(os.Stderr, "Note: pandoc not found, wrote %s instead\n", mdFile)
+	if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+		return fmt.Errorf("create output dir: %w", err)
+	}
+
+	f, err := os.CreateTemp("", "pubmed-synth-*.md")
+	if err != nil {
+		return fmt.Errorf("create temp markdown: %w", err)
+	}
+	tmpMD := f.Name()
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close temp markdown: %w", err)
+	}
+	defer os.Remove(tmpMD) // best-effort cleanup
+
+	if err := saveMarkdownFile(tmpMD, result); err != nil {
+		return fmt.Errorf("write temp markdown: %w", err)
+	}
+	if err := convertToDocxContext(ctx, tmpMD, filename); err != nil {
+		mdOut := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".md"
+		if err2 := saveMarkdownFile(mdOut, result); err2 != nil {
+			return fmt.Errorf("pandoc conversion failed (%w); additionally failed to write markdown fallback %q: %w", err, mdOut, err2)
+		}
+		return &docxFallbackWarning{DocxPath: filename, MarkdownPath: mdOut, Cause: err}
+	}
 	return nil
-}
-
-func formatReferencesForDocx(refs []synth.Reference) string {
-	var lines []string
-	for i, ref := range refs {
-		lines = append(lines, fmt.Sprintf("%d. %s", i+1, ref.CitationAPA))
-	}
-	return strings.Join(lines, "\n\n")
-}
-
-func convertWithPandoc(ctx context.Context, mdFile, docxFile string) error {
-	cmd := exec.CommandContext(ctx, "pandoc", mdFile, "-o", docxFile)
-	return cmd.Run()
 }

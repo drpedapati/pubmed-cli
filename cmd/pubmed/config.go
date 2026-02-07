@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -32,14 +33,14 @@ var configShowCmd = &cobra.Command{
 	Short: "Show current configuration",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := loadWizardConfig()
-		
+
 		style := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("99")).
 			Padding(1, 2)
 
 		configPath := getConfigPath()
-		
+
 		content := fmt.Sprintf(`📁 Config file: %s
 
 📊 Defaults:
@@ -77,14 +78,14 @@ var configSetCmd = &cobra.Command{
 		cfg := loadWizardConfig()
 
 		var (
-			papersStr    string = fmt.Sprintf("%d", cfg.DefaultPapers)
-			wordsStr     string = fmt.Sprintf("%d", cfg.DefaultWords)
-			relevanceStr string = fmt.Sprintf("%d", cfg.DefaultRelevance)
-			outputFolder string = cfg.OutputFolder
-			preferDocx   bool   = cfg.PreferDocx
-			preferRIS    bool   = cfg.PreferRIS
-			useClaude    bool   = cfg.UseClaude
-			llmModel     string = cfg.LLMModel
+			papersStr    = fmt.Sprintf("%d", cfg.DefaultPapers)
+			wordsStr     = fmt.Sprintf("%d", cfg.DefaultWords)
+			relevanceStr = fmt.Sprintf("%d", cfg.DefaultRelevance)
+			outputFolder = cfg.OutputFolder
+			preferDocx   = cfg.PreferDocx
+			preferRIS    = cfg.PreferRIS
+			useClaude    = cfg.UseClaude
+			llmModel     = cfg.LLMModel
 		)
 
 		form := huh.NewForm(
@@ -115,7 +116,13 @@ var configSetCmd = &cobra.Command{
 			huh.NewGroup(
 				huh.NewInput().
 					Title("Output folder").
-					Value(&outputFolder),
+					Value(&outputFolder).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return fmt.Errorf("output folder is required")
+						}
+						return nil
+					}),
 				huh.NewConfirm().
 					Title("Generate Word documents by default?").
 					Value(&preferDocx),
@@ -140,15 +147,27 @@ var configSetCmd = &cobra.Command{
 			return err
 		}
 
-		// Parse and save
-		cfg.DefaultPapers, _ = strconv.Atoi(papersStr)
-		cfg.DefaultWords, _ = strconv.Atoi(wordsStr)
-		cfg.DefaultRelevance, _ = strconv.Atoi(relevanceStr)
-		cfg.OutputFolder = outputFolder
+		p, err := strconv.Atoi(papersStr)
+		if err != nil {
+			return fmt.Errorf("parse papers: %w", err)
+		}
+		w, err := strconv.Atoi(wordsStr)
+		if err != nil {
+			return fmt.Errorf("parse words: %w", err)
+		}
+		r, err := strconv.Atoi(relevanceStr)
+		if err != nil {
+			return fmt.Errorf("parse relevance: %w", err)
+		}
+
+		cfg.DefaultPapers = p
+		cfg.DefaultWords = w
+		cfg.DefaultRelevance = r
+		cfg.OutputFolder = strings.TrimSpace(outputFolder)
 		cfg.PreferDocx = preferDocx
 		cfg.PreferRIS = preferRIS
 		cfg.UseClaude = useClaude
-		cfg.LLMModel = llmModel
+		cfg.LLMModel = strings.TrimSpace(llmModel)
 
 		if err := saveWizardConfig(cfg); err != nil {
 			return fmt.Errorf("save config: %w", err)

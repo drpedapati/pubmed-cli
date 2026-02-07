@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +21,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// WizardConfig holds user preferences
+// WizardConfig holds user preferences.
 type WizardConfig struct {
 	DefaultPapers    int    `json:"default_papers"`
 	DefaultWords     int    `json:"default_words"`
@@ -30,7 +33,7 @@ type WizardConfig struct {
 	UseClaude        bool   `json:"use_claude"`
 }
 
-// DefaultWizardConfig returns sensible defaults
+// DefaultWizardConfig returns sensible defaults.
 func DefaultWizardConfig() WizardConfig {
 	return WizardConfig{
 		DefaultPapers:    5,
@@ -60,7 +63,7 @@ Run without arguments to start the wizard:
 	RunE: runWizard,
 }
 
-// Styles
+// Styles.
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -86,16 +89,19 @@ var (
 )
 
 func runWizard(cmd *cobra.Command, args []string) error {
-	// Load config
+	// Load config.
 	cfg := loadWizardConfig()
+	if strings.TrimSpace(cfg.OutputFolder) == "" {
+		cfg.OutputFolder = getDefaultOutputFolder()
+	}
 
-	// Clear screen and show welcome
+	// Clear screen and show welcome.
 	fmt.Print("\033[H\033[2J")
 	fmt.Println(titleStyle.Render("🔬 PubMed Literature Synthesis"))
 	fmt.Println(subtitleStyle.Render("Create a research synthesis with citations in seconds"))
 	fmt.Println()
 
-	// Form values
+	// Form values.
 	var (
 		question     string
 		papersStr    string
@@ -104,8 +110,9 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		outputName   string
 		confirm      bool
 	)
+	outputFormat = defaultOutputFormat(cfg)
 
-	// Build the form
+	// Build the form.
 	form := huh.NewForm(
 		// Page 1: Research Question
 		huh.NewGroup(
@@ -155,7 +162,8 @@ func runWizard(cmd *cobra.Command, args []string) error {
 				Title("Output filename (without extension)").
 				Description(fmt.Sprintf("Files saved to: %s", cfg.OutputFolder)).
 				Placeholder("synthesis").
-				Value(&outputName),
+				Value(&outputName).
+				Validate(validateOutputName),
 		).Title("Output Options"),
 
 		// Page 4: Confirm
@@ -169,45 +177,57 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		).Title("Confirm"),
 	).WithTheme(huh.ThemeCatppuccin())
 
-	// Run the form
-	err := form.Run()
-	if err != nil {
+	if err := form.Run(); err != nil {
 		return err
 	}
-
 	if !confirm {
 		fmt.Println(dimStyle.Render("\nCancelled."))
 		return nil
 	}
 
-	// Parse values with defaults
+	// Parse values with defaults.
 	papers := cfg.DefaultPapers
+	papersStr = strings.TrimSpace(papersStr)
 	if papersStr != "" {
-		papers, _ = strconv.Atoi(papersStr)
+		p, err := strconv.Atoi(papersStr)
+		if err != nil {
+			return fmt.Errorf("parse papers: %w", err)
+		}
+		papers = p
 	}
 
 	words := cfg.DefaultWords
+	wordsStr = strings.TrimSpace(wordsStr)
 	if wordsStr != "" {
-		words, _ = strconv.Atoi(wordsStr)
+		w, err := strconv.Atoi(wordsStr)
+		if err != nil {
+			return fmt.Errorf("parse words: %w", err)
+		}
+		words = w
 	}
 
-	if outputName == "" {
+	if strings.TrimSpace(outputName) == "" {
 		outputName = "synthesis"
 	}
+	name, err := sanitizeOutputName(outputName)
+	if err != nil {
+		return err
+	}
+	outputName = name
 
-	// Ensure output folder exists
-	if err := os.MkdirAll(cfg.OutputFolder, 0755); err != nil {
+	// Ensure output folder exists.
+	if err := os.MkdirAll(cfg.OutputFolder, 0o755); err != nil {
 		return fmt.Errorf("create output folder: %w", err)
 	}
 
-	// Build file paths
+	// Build file paths.
 	docxPath := filepath.Join(cfg.OutputFolder, outputName+".docx")
 	risPath := filepath.Join(cfg.OutputFolder, outputName+".ris")
 	mdPath := filepath.Join(cfg.OutputFolder, outputName+".md")
 
 	fmt.Println()
 
-	// Build LLM client
+	// Build LLM client.
 	var llmClient synth.LLMClient
 	if cfg.UseClaude {
 		llmClient, err = llm.NewClaudeClient(cfg.LLMModel)
@@ -222,7 +242,7 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		llmClient = llm.NewClient(opts...)
 	}
 
-	// Build synth config
+	// Build synth config.
 	synthCfg := synth.DefaultConfig()
 	synthCfg.PapersToUse = papers
 	synthCfg.TargetWords = words
@@ -230,10 +250,13 @@ func runWizard(cmd *cobra.Command, args []string) error {
 
 	engine := synth.NewEngine(llmClient, newEutilsClient(), synthCfg)
 
-	// Run synthesis with spinner
-	var result *synth.Result
+	// Run synthesis with spinner.
+	var (
+		result   *synth.Result
+		synthErr error
+	)
 	action := func() {
-		result, err = engine.Synthesize(cmd.Context(), question)
+		result, synthErr = engine.Synthesize(cmd.Context(), question)
 	}
 
 	spinErr := spinner.New().
@@ -244,11 +267,14 @@ func runWizard(cmd *cobra.Command, args []string) error {
 	if spinErr != nil {
 		return spinErr
 	}
-	if err != nil {
-		return err
+	if synthErr != nil {
+		return synthErr
+	}
+	if result == nil {
+		return errors.New("synthesis returned nil result")
 	}
 
-	// Save outputs based on format
+	// Save outputs based on format.
 	var savedFiles []string
 
 	switch outputFormat {
@@ -256,15 +282,16 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		if err := saveMarkdownFile(mdPath, result); err != nil {
 			return err
 		}
-		if err := convertToDocx(mdPath, docxPath); err != nil {
-			// Fall back to just markdown
+		if err := convertToDocxContext(cmd.Context(), mdPath, docxPath); err != nil {
+			fmt.Fprintln(os.Stderr, dimStyle.Render(fmt.Sprintf("Pandoc conversion failed (%v). Keeping markdown output.", err)))
+			// Fall back to just markdown.
 			savedFiles = append(savedFiles, mdPath)
 		} else {
-			os.Remove(mdPath) // Clean up temp markdown
+			_ = os.Remove(mdPath) // best-effort cleanup
 			savedFiles = append(savedFiles, docxPath)
 		}
-		if err := os.WriteFile(risPath, []byte(result.RIS), 0644); err != nil {
-			return err
+		if err := os.WriteFile(risPath, []byte(result.RIS), 0o644); err != nil {
+			return fmt.Errorf("write RIS: %w", err)
 		}
 		savedFiles = append(savedFiles, risPath)
 
@@ -272,10 +299,11 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		if err := saveMarkdownFile(mdPath, result); err != nil {
 			return err
 		}
-		if err := convertToDocx(mdPath, docxPath); err != nil {
+		if err := convertToDocxContext(cmd.Context(), mdPath, docxPath); err != nil {
+			fmt.Fprintln(os.Stderr, dimStyle.Render(fmt.Sprintf("Pandoc conversion failed (%v). Keeping markdown output.", err)))
 			savedFiles = append(savedFiles, mdPath)
 		} else {
-			os.Remove(mdPath)
+			_ = os.Remove(mdPath)
 			savedFiles = append(savedFiles, docxPath)
 		}
 
@@ -287,14 +315,16 @@ func runWizard(cmd *cobra.Command, args []string) error {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(result)
+
+	default:
+		return fmt.Errorf("unknown output format: %q", outputFormat)
 	}
 
-	// Print success
+	// Print success.
 	fmt.Println()
 	fmt.Println(successStyle.Render("✓ Synthesis complete!"))
 	fmt.Println()
 
-	// Summary box
 	summary := fmt.Sprintf(`📊 %d papers searched → %d scored → %d used
 📝 %d words generated
 💰 ~%d tokens used`,
@@ -307,36 +337,73 @@ func runWizard(cmd *cobra.Command, args []string) error {
 	fmt.Println(boxStyle.Render(summary))
 	fmt.Println()
 
-	// Files created
 	fmt.Println(dimStyle.Render("Files created:"))
 	for _, f := range savedFiles {
 		fmt.Printf("  📄 %s\n", f)
 	}
 	fmt.Println()
 
-	// Show snippet of synthesis
 	snippet := result.Synthesis
-	if len(snippet) > 300 {
-		snippet = snippet[:300] + "..."
+	if r := []rune(snippet); len(r) > 300 {
+		snippet = string(r[:300]) + "..."
 	}
 	fmt.Println(dimStyle.Render("Preview:"))
 	fmt.Println(boxStyle.Render(snippet))
-
 	return nil
 }
 
+func defaultOutputFormat(cfg WizardConfig) string {
+	if cfg.PreferDocx {
+		if cfg.PreferRIS {
+			return "docx+ris"
+		}
+		return "docx"
+	}
+	return "markdown"
+}
+
 func validatePositiveInt(s string) error {
+	s = strings.TrimSpace(s)
 	if s == "" {
-		return nil // Allow empty for defaults
+		return nil // Allow empty for defaults.
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil {
-		return fmt.Errorf("please enter a number")
+		return fmt.Errorf("please enter a whole number")
 	}
 	if n < 1 {
 		return fmt.Errorf("must be at least 1")
 	}
 	return nil
+}
+
+func validateOutputName(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return nil // default will be used
+	}
+	// We intentionally disallow path separators so the wizard can't write outside OutputFolder.
+	if strings.ContainsAny(s, "/\\") {
+		return fmt.Errorf("filename must not contain path separators")
+	}
+	return nil
+}
+
+func sanitizeOutputName(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", fmt.Errorf("output name is required")
+	}
+	if strings.ContainsAny(s, "/\\") {
+		return "", fmt.Errorf("filename must not contain path separators")
+	}
+	// Strip a user-provided extension, if any.
+	if ext := filepath.Ext(s); ext != "" {
+		s = strings.TrimSuffix(s, ext)
+	}
+	if s == "" {
+		return "", fmt.Errorf("output name is required")
+	}
+	return s, nil
 }
 
 func saveMarkdownFile(path string, result *synth.Result) error {
@@ -347,14 +414,20 @@ func saveMarkdownFile(path string, result *synth.Result) error {
 	for i, ref := range result.References {
 		sb.WriteString(fmt.Sprintf("%d. %s\n\n", i+1, ref.CitationAPA))
 	}
-	return os.WriteFile(path, []byte(sb.String()), 0644)
+	return os.WriteFile(path, []byte(sb.String()), 0o644)
 }
 
 func convertToDocx(mdPath, docxPath string) error {
-	// Try to find pandoc
+	return convertToDocxContext(context.Background(), mdPath, docxPath)
+}
+
+func convertToDocxContext(ctx context.Context, mdPath, docxPath string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	pandocPath, err := exec.LookPath("pandoc")
 	if err != nil {
-		// Check common locations
+		// Check common locations.
 		for _, p := range []string{"/opt/homebrew/bin/pandoc", "/usr/local/bin/pandoc", "/usr/bin/pandoc"} {
 			if _, err := os.Stat(p); err == nil {
 				pandocPath = p
@@ -362,13 +435,21 @@ func convertToDocx(mdPath, docxPath string) error {
 			}
 		}
 	}
-
 	if pandocPath == "" {
 		return fmt.Errorf("pandoc not found - saved as markdown instead")
 	}
 
-	cmd := exec.Command(pandocPath, mdPath, "-o", docxPath)
-	return cmd.Run()
+	cmd := exec.CommandContext(ctx, pandocPath, mdPath, "-o", docxPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			return fmt.Errorf("pandoc: %w", err)
+		}
+		return fmt.Errorf("pandoc: %w: %s", err, msg)
+	}
+	return nil
 }
 
 func printMarkdownResult(result *synth.Result) {
@@ -389,7 +470,7 @@ func countWords(s string) int {
 	return len(strings.Fields(s))
 }
 
-// Config file handling
+// Config file handling.
 
 func getConfigPath() string {
 	var configDir string
@@ -405,15 +486,20 @@ func getConfigPath() string {
 			configDir = filepath.Join(os.Getenv("HOME"), ".config")
 		}
 	}
+	if strings.TrimSpace(configDir) == "" {
+		configDir = "."
+	}
 	return filepath.Join(configDir, "pubmed-cli", "config.json")
 }
 
 func getDefaultOutputFolder() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		// Fall back to a relative folder so we don't accidentally join against an empty home dir.
+		return "pubmed-syntheses"
+	}
 	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Documents", "PubMed Syntheses")
-	case "windows":
+	case "darwin", "windows":
 		return filepath.Join(home, "Documents", "PubMed Syntheses")
 	default:
 		return filepath.Join(home, "pubmed-syntheses")
@@ -428,16 +514,16 @@ func loadWizardConfig() WizardConfig {
 	if err != nil {
 		return cfg
 	}
-
-	json.Unmarshal(data, &cfg)
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		// Treat invalid JSON as "no config".
+		return DefaultWizardConfig()
+	}
 	return cfg
 }
 
 func saveWizardConfig(cfg WizardConfig) error {
 	configPath := getConfigPath()
-
-	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return err
 	}
 
@@ -445,6 +531,5 @@ func saveWizardConfig(cfg WizardConfig) error {
 	if err != nil {
 		return err
 	}
-
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0o644)
 }

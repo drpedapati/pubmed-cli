@@ -3,6 +3,7 @@ package synth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -17,22 +18,39 @@ type LLMClient interface {
 
 // Config controls synthesis behavior.
 type Config struct {
-	PapersToUse       int    // How many papers to include (default: 5)
-	PapersToSearch    int    // How many to search before filtering (default: 30)
-	RelevanceThreshold int   // Minimum relevance score 1-10 (default: 7)
-	TargetWords       int    // Target word count (default: 250)
-	CitationStyle     string // Citation style (default: apa)
+	PapersToUse        int    // How many papers to include (default: 5)
+	PapersToSearch     int    // How many to search before filtering (default: 30)
+	RelevanceThreshold int    // Minimum relevance score 1-10 (default: 7)
+	TargetWords        int    // Target word count (default: 250)
+	CitationStyle      string // Citation style (default: apa)
 }
 
 // DefaultConfig returns sensible defaults.
 func DefaultConfig() Config {
 	return Config{
-		PapersToUse:       5,
-		PapersToSearch:    30,
+		PapersToUse:        5,
+		PapersToSearch:     30,
 		RelevanceThreshold: 7,
-		TargetWords:       250,
-		CitationStyle:     "apa",
+		TargetWords:        250,
+		CitationStyle:      "apa",
 	}
+}
+
+func (c Config) validate() error {
+	if c.PapersToUse < 1 {
+		return fmt.Errorf("papers_to_use must be >= 1")
+	}
+	if c.PapersToSearch < 1 {
+		return fmt.Errorf("papers_to_search must be >= 1")
+	}
+	if c.TargetWords < 1 {
+		return fmt.Errorf("target_words must be >= 1")
+	}
+	if c.RelevanceThreshold < 1 || c.RelevanceThreshold > 10 {
+		return fmt.Errorf("relevance_threshold must be 1-10")
+	}
+	// Allow PapersToUse > PapersToSearch, but it's almost certainly a misconfig.
+	return nil
 }
 
 // ScoredPaper holds a paper with its relevance score.
@@ -92,27 +110,47 @@ func NewEngine(llmClient LLMClient, eutilsClient *eutils.Client, cfg Config) *En
 
 // Synthesize performs the full synthesis workflow.
 func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, error) {
-	result := &Result{
-		Question: question,
+	if e == nil {
+		return nil, errors.New("synth engine is nil")
+	}
+	if e.llm == nil {
+		return nil, errors.New("LLM client is nil")
+	}
+	if e.eutils == nil {
+		return nil, errors.New("eutils client is nil")
+	}
+	if err := e.cfg.validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return nil, errors.New("question is required")
+	}
+
+	result := &Result{Question: question}
+
 	// Step 1: Search PubMed
-	searchResult, err := e.eutils.Search(ctx, question, &eutils.SearchOptions{
-		Limit: e.cfg.PapersToSearch,
-	})
+	searchResult, err := e.eutils.Search(ctx, question, &eutils.SearchOptions{Limit: e.cfg.PapersToSearch})
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
-	result.PapersSearched = len(searchResult.IDs)
-
-	if len(searchResult.IDs) == 0 {
+	if searchResult == nil {
+		return nil, errors.New("search: nil result")
+	}
+	ids := searchResult.IDs
+	result.PapersSearched = len(ids)
+	if len(ids) == 0 {
 		return nil, fmt.Errorf("no papers found for query: %s", question)
 	}
 
 	// Step 2: Fetch articles
-	articles, err := e.eutils.Fetch(ctx, searchResult.IDs)
+	articles, err := e.eutils.Fetch(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
+	}
+	if len(articles) == 0 {
+		return nil, fmt.Errorf("fetch: no articles returned for query: %s", question)
 	}
 
 	// Step 3: Score relevance
@@ -131,47 +169,60 @@ func (e *Engine) Synthesize(ctx context.Context, question string) (*Result, erro
 		}
 	}
 
-	// Sort by relevance descending
 	sort.Slice(relevant, func(i, j int) bool {
 		return relevant[i].RelevanceScore > relevant[j].RelevanceScore
 	})
 
-	// Take top N
 	if len(relevant) > e.cfg.PapersToUse {
 		relevant = relevant[:e.cfg.PapersToUse]
 	}
-
 	if len(relevant) == 0 {
 		return nil, fmt.Errorf("no papers met relevance threshold (%d) for: %s", e.cfg.RelevanceThreshold, question)
 	}
-
 	result.PapersUsed = len(relevant)
 
 	// Step 5: Build references
+	result.References = make([]Reference, 0, len(relevant))
 	for i, sp := range relevant {
 		ref := buildReference(sp.Article, i+1, sp.RelevanceScore)
 		result.References = append(result.References, ref)
 	}
 
 	// Step 6: Generate synthesis
-	synthesis, tokensUsed, err := e.generateSynthesis(ctx, question, relevant)
+	synthesis, tokens, err := e.generateSynthesis(ctx, question, relevant)
 	if err != nil {
 		return nil, fmt.Errorf("synthesis: %w", err)
 	}
 	result.Synthesis = synthesis
-	result.Tokens.Output += tokensUsed
+	result.Tokens.Input += tokens.Input
+	result.Tokens.Output += tokens.Output
 
 	// Step 7: Generate RIS
 	result.RIS = GenerateRIS(result.References)
-
-	// Estimate total tokens (rough)
 	result.Tokens.Total = result.Tokens.Input + result.Tokens.Output
-
 	return result, nil
 }
 
 // SynthesizePMID performs deep dive on a single paper.
 func (e *Engine) SynthesizePMID(ctx context.Context, pmid string) (*Result, error) {
+	if e == nil {
+		return nil, errors.New("synth engine is nil")
+	}
+	if e.llm == nil {
+		return nil, errors.New("LLM client is nil")
+	}
+	if e.eutils == nil {
+		return nil, errors.New("eutils client is nil")
+	}
+	if err := e.cfg.validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	pmid = strings.TrimSpace(pmid)
+	if pmid == "" {
+		return nil, errors.New("pmid is required")
+	}
+
 	result := &Result{
 		Question:       fmt.Sprintf("Deep dive: PMID %s", pmid),
 		PapersSearched: 1,
@@ -179,7 +230,6 @@ func (e *Engine) SynthesizePMID(ctx context.Context, pmid string) (*Result, erro
 		PapersUsed:     1,
 	}
 
-	// Fetch the article
 	articles, err := e.eutils.Fetch(ctx, []string{pmid})
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
@@ -192,7 +242,17 @@ func (e *Engine) SynthesizePMID(ctx context.Context, pmid string) (*Result, erro
 	ref := buildReference(article, 1, 10)
 	result.References = []Reference{ref}
 
-	// Generate deep dive summary
+	citeKey := inTextCiteKey(article)
+	title := strings.TrimSpace(article.Title)
+	if title == "" {
+		title = "(no title available)"
+	}
+	abstract := strings.TrimSpace(article.Abstract)
+	if abstract == "" {
+		abstract = "(no abstract available)"
+	}
+	abstract = truncate(abstract, 2500)
+
 	prompt := fmt.Sprintf(`Summarize this research paper in approximately %d words. Include:
 - Main objective/question
 - Key methods
@@ -204,67 +264,90 @@ Title: %s
 Abstract:
 %s
 
-Write a cohesive summary paragraph. Cite as (Author et al., %s).`,
-		e.cfg.TargetWords, article.Title, article.Abstract, article.Year)
+Write a cohesive summary paragraph. Cite as (%s).`,
+		e.cfg.TargetWords, title, abstract, citeKey)
 
 	synthesis, err := e.llm.Complete(ctx, prompt, e.cfg.TargetWords*2)
 	if err != nil {
 		return nil, fmt.Errorf("synthesis: %w", err)
 	}
-	result.Synthesis = strings.TrimSpace(synthesis)
+	synthesis = strings.TrimSpace(synthesis)
+	if synthesis == "" {
+		return nil, errors.New("synthesis: empty response")
+	}
+	result.Synthesis = synthesis
 
-	// Estimate tokens
 	result.Tokens.Input = len(prompt) / 4
 	result.Tokens.Output = len(synthesis) / 4
 	result.Tokens.Total = result.Tokens.Input + result.Tokens.Output
-
-	// Generate RIS
 	result.RIS = GenerateRIS(result.References)
-
 	return result, nil
 }
 
 func (e *Engine) scoreRelevance(ctx context.Context, question string, articles []eutils.Article) ([]ScoredPaper, int, error) {
-	var scored []ScoredPaper
-	totalTokens := 0
+	if e == nil || e.llm == nil {
+		return nil, 0, errors.New("LLM client is nil")
+	}
+	question = strings.TrimSpace(question)
 
-	for _, article := range articles {
-		score, tokens, err := scoreArticleRelevance(ctx, e.llm, question, &article)
+	scored := make([]ScoredPaper, 0, len(articles))
+	totalTokens := 0
+	var firstErr error
+	errCount := 0
+	for i := range articles {
+		article := &articles[i]
+		score, tokens, err := scoreArticleRelevance(ctx, e.llm, question, article)
 		if err != nil {
-			// Log but continue - don't fail entire synthesis for one bad score
-			score = 5 // neutral score
+			// Never swallow cancellation/timeouts: callers expect prompt termination.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, totalTokens, ctxErr
+			}
+			// Continue with a neutral score; don't fail the whole run on a single scoring failure.
+			// But if *all* scoring calls fail, surface the underlying error.
+			errCount++
+			if firstErr == nil {
+				firstErr = err
+			}
+			score = 5
 		}
 		totalTokens += tokens
-		scored = append(scored, ScoredPaper{
-			Article:        article,
-			RelevanceScore: score,
-		})
+		scored = append(scored, ScoredPaper{Article: *article, RelevanceScore: score})
 	}
-
+	if len(articles) > 0 && errCount == len(articles) {
+		return nil, totalTokens, fmt.Errorf("relevance scoring failed for all %d articles: %w", errCount, firstErr)
+	}
 	return scored, totalTokens, nil
 }
 
-func (e *Engine) generateSynthesis(ctx context.Context, question string, papers []ScoredPaper) (string, int, error) {
-	// Build context from papers
-	var contextParts []string
-	var citeKeys []string
+func (e *Engine) generateSynthesis(ctx context.Context, question string, papers []ScoredPaper) (string, TokenUsage, error) {
+	if e == nil || e.llm == nil {
+		return "", TokenUsage{}, errors.New("LLM client is nil")
+	}
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return "", TokenUsage{}, errors.New("question is required")
+	}
+	if len(papers) == 0 {
+		return "", TokenUsage{}, errors.New("no papers provided")
+	}
+
+	contextParts := make([]string, 0, len(papers))
+	citeKeys := make([]string, 0, len(papers))
 
 	for i, sp := range papers {
-		// Create citation key
-		firstAuthor := "Unknown"
-		if len(sp.Article.Authors) > 0 {
-			parts := strings.Split(sp.Article.Authors[0].FullName(), " ")
-			if len(parts) > 0 {
-				firstAuthor = parts[len(parts)-1] // Last name
-			}
-		}
-		citeKey := fmt.Sprintf("%s et al., %s", firstAuthor, sp.Article.Year)
+		citeKey := inTextCiteKey(sp.Article)
 		citeKeys = append(citeKeys, citeKey)
+
+		abstract := sp.Article.Abstract
+		if abstract == "" {
+			abstract = "(no abstract available)"
+		}
+		abstract = truncate(abstract, 1500)
 
 		contextParts = append(contextParts, fmt.Sprintf(`[%d] %s (%s)
 Title: %s
 Abstract: %s
-`, i+1, citeKey, sp.Article.PMID, sp.Article.Title, sp.Article.Abstract))
+`, i+1, citeKey, sp.Article.PMID, sp.Article.Title, abstract))
 	}
 
 	prompt := fmt.Sprintf(`You are a scientific writer. Synthesize the following research papers to answer this question:
@@ -291,37 +374,39 @@ Write the synthesis:`,
 
 	synthesis, err := e.llm.Complete(ctx, prompt, e.cfg.TargetWords*3)
 	if err != nil {
-		return "", 0, err
+		return "", TokenUsage{}, err
+	}
+	synthesis = strings.TrimSpace(synthesis)
+	if synthesis == "" {
+		return "", TokenUsage{}, errors.New("LLM returned empty synthesis")
 	}
 
-	// Estimate tokens
-	tokensUsed := len(synthesis) / 4
-
-	return strings.TrimSpace(synthesis), tokensUsed, nil
+	return synthesis, TokenUsage{Input: len(prompt) / 4, Output: len(synthesis) / 4}, nil
 }
 
 func buildReference(article eutils.Article, num int, relevance int) Reference {
 	// Build author string
-	var authorStr string
+	authorStr := "Unknown"
 	if len(article.Authors) > 0 {
-		if len(article.Authors) == 1 {
+		switch len(article.Authors) {
+		case 1:
 			authorStr = article.Authors[0].FullName()
-		} else if len(article.Authors) == 2 {
+		case 2:
 			authorStr = article.Authors[0].FullName() + " & " + article.Authors[1].FullName()
-		} else {
+		default:
 			authorStr = article.Authors[0].FullName() + " et al."
 		}
 	}
 
-	// Build APA citation
 	apa := formatAPA(article)
 
-	// Build citation key
 	key := fmt.Sprintf("%d", num)
 	if len(article.Authors) > 0 {
-		parts := strings.Split(article.Authors[0].FullName(), " ")
-		lastName := parts[len(parts)-1]
-		key = fmt.Sprintf("%s %s", lastName, article.Year)
+		name := firstAuthorKeyName(article)
+		year := normalizedYear(article.Year)
+		if name != "" {
+			key = fmt.Sprintf("%s %s", name, year)
+		}
 	}
 
 	return Reference{
@@ -341,55 +426,118 @@ func buildReference(article eutils.Article, num int, relevance int) Reference {
 func formatAPA(article eutils.Article) string {
 	// Build author list for APA
 	var authors string
-	if len(article.Authors) == 0 {
+	switch {
+	case len(article.Authors) == 0:
 		authors = "Unknown"
-	} else if len(article.Authors) == 1 {
+	case len(article.Authors) == 1:
 		a := article.Authors[0]
-		authors = fmt.Sprintf("%s, %s.", a.LastName, initials(a.ForeName))
-	} else if len(article.Authors) <= 7 {
-		var parts []string
+		authors = apaAuthor(a)
+	case len(article.Authors) <= 7:
+		parts := make([]string, 0, len(article.Authors))
 		for i, a := range article.Authors {
 			if i == len(article.Authors)-1 {
-				parts = append(parts, fmt.Sprintf("& %s, %s.", a.LastName, initials(a.ForeName)))
+				parts = append(parts, fmt.Sprintf("& %s", apaAuthor(a)))
 			} else {
-				parts = append(parts, fmt.Sprintf("%s, %s.", a.LastName, initials(a.ForeName)))
+				parts = append(parts, apaAuthor(a))
 			}
 		}
 		authors = strings.Join(parts, ", ")
-	} else {
+	default:
 		// More than 7 authors: first 6, ..., last
-		var parts []string
+		parts := make([]string, 0, 8)
 		for i := 0; i < 6; i++ {
 			a := article.Authors[i]
-			parts = append(parts, fmt.Sprintf("%s, %s.", a.LastName, initials(a.ForeName)))
+			parts = append(parts, apaAuthor(a))
 		}
 		last := article.Authors[len(article.Authors)-1]
 		parts = append(parts, "...")
-		parts = append(parts, fmt.Sprintf("& %s, %s.", last.LastName, initials(last.ForeName)))
+		parts = append(parts, fmt.Sprintf("& %s", apaAuthor(last)))
 		authors = strings.Join(parts, ", ")
 	}
 
-	// Format: Authors (Year). Title. Journal.
-	citation := fmt.Sprintf("%s (%s). %s. %s.",
-		authors,
-		article.Year,
-		article.Title,
-		article.Journal)
-
+	year := normalizedYear(article.Year)
+	citation := fmt.Sprintf("%s (%s). %s. %s.", authors, year, article.Title, article.Journal)
 	if article.DOI != "" {
 		citation += fmt.Sprintf(" https://doi.org/%s", article.DOI)
 	}
-
 	return citation
+}
+
+func apaAuthor(a eutils.Author) string {
+	name := strings.TrimSpace(a.CollectiveName)
+	if name == "" {
+		last := strings.TrimSpace(a.LastName)
+		fore := strings.TrimSpace(a.ForeName)
+		switch {
+		case last != "" && fore != "":
+			name = fmt.Sprintf("%s, %s.", last, initials(fore))
+		case last != "":
+			name = last
+		case fore != "":
+			name = fore
+		default:
+			name = "Unknown"
+		}
+	}
+	if name != "Unknown" && !strings.HasSuffix(name, ".") {
+		name += "."
+	}
+	return name
 }
 
 func initials(foreName string) string {
 	parts := strings.Fields(foreName)
-	var inits []string
+	inits := make([]string, 0, len(parts))
 	for _, p := range parts {
-		if len(p) > 0 {
-			inits = append(inits, string(p[0]))
+		r := []rune(p)
+		if len(r) > 0 {
+			inits = append(inits, string(r[0]))
 		}
 	}
 	return strings.Join(inits, ". ")
+}
+
+func lastToken(s string) string {
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[len(fields)-1]
+}
+
+func normalizedYear(year string) string {
+	year = strings.TrimSpace(year)
+	if year == "" {
+		return "n.d."
+	}
+	return year
+}
+
+func firstAuthorKeyName(article eutils.Article) string {
+	if len(article.Authors) == 0 {
+		return ""
+	}
+	a := article.Authors[0]
+	if s := strings.TrimSpace(a.CollectiveName); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(a.LastName); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(a.FullName()); s != "" {
+		return lastToken(s)
+	}
+	return ""
+}
+
+func inTextCiteKey(article eutils.Article) string {
+	name := firstAuthorKeyName(article)
+	if name == "" {
+		name = "Unknown"
+	}
+	year := normalizedYear(article.Year)
+	if len(article.Authors) <= 1 {
+		return fmt.Sprintf("%s, %s", name, year)
+	}
+	return fmt.Sprintf("%s et al., %s", name, year)
 }
