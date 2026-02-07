@@ -26,11 +26,16 @@ Search PubMed, fetch abstracts, traverse citation networks, answer biomedical qu
 
 ## 📦 Installation
 
+All methods install the `pubmed` command — a single binary with multiple subcommands.
+
 ### Homebrew (recommended)
 
 ```bash
 brew tap henrybloomingdale/tools
 brew install pubmed-cli
+
+# Verify
+pubmed --help
 ```
 
 ### Go install
@@ -45,6 +50,20 @@ go install github.com/henrybloomingdale/pubmed-cli/cmd/pubmed@latest
 git clone https://github.com/henrybloomingdale/pubmed-cli.git
 cd pubmed-cli
 go build -o pubmed ./cmd/pubmed
+```
+
+### What you get
+
+One command, seven subcommands:
+
+```
+pubmed search    # Search PubMed
+pubmed fetch     # Get article details
+pubmed cited-by  # Find citing papers
+pubmed references # Find referenced papers
+pubmed related   # Find similar papers
+pubmed mesh      # Look up MeSH terms
+pubmed qa        # Answer biomedical questions (v0.3.0+)
 ```
 
 ## ⚙️ Configuration
