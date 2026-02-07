@@ -42,7 +42,7 @@ func DefaultWizardConfig() WizardConfig {
 		OutputFolder:     getDefaultOutputFolder(),
 		PreferDocx:       true,
 		PreferRIS:        true,
-		UseClaude:        false,
+		UseClaude:        true, // Default to Claude (handles auth via CLI OAuth)
 	}
 }
 
