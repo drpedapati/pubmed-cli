@@ -2,6 +2,23 @@
 
 All notable changes to pubmed-cli will be documented in this file.
 
+## [0.5.0] - 2026-02-07
+
+### Added
+- **`pubmed wizard`** — Beautiful interactive synthesis wizard
+  - Step-by-step prompts with sensible defaults
+  - Progress spinner during synthesis
+  - Cross-platform config storage (`~/.config/pubmed-cli/config.json`)
+  - Outputs to `~/Documents/PubMed Syntheses/` by default
+- **`pubmed config`** — Configuration management
+  - `config show` — View current settings
+  - `config set` — Interactive editor
+  - `config reset` — Reset to defaults
+- Uses Charm's `huh` library for beautiful terminal forms
+
+### Changed
+- README reorganized with wizard as primary entry point
+
 ## [0.4.0] - 2026-02-07
 
 ### Added

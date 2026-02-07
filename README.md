@@ -4,7 +4,7 @@
     <strong>PubMed from your terminal. Built for humans and AI agents.</strong>
   </p>
   <p align="center">
-    <a href="https://github.com/henrybloomingdale/pubmed-cli/releases/latest"><img src="https://img.shields.io/badge/version-0.4.0-blue?style=flat-square" alt="v0.4.0"></a>
+    <a href="https://github.com/henrybloomingdale/pubmed-cli/releases/latest"><img src="https://img.shields.io/badge/version-0.5.0-blue?style=flat-square" alt="v0.5.0"></a>
     <img src="https://img.shields.io/badge/go-1.25-00ADD8?style=flat-square&logo=go" alt="Go 1.25">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   </p>
@@ -16,14 +16,14 @@ Search PubMed, fetch abstracts, traverse citation networks, answer biomedical qu
 
 ## ✨ Features
 
-- **8 commands** — `search`, `fetch`, `cited-by`, `references`, `related`, `mesh`, `qa`, `synth`
+- **Interactive wizard** — beautiful step-by-step synthesis with progress spinner
 - **Literature synthesis** — search, filter by relevance, synthesize with citations
 - **Multiple outputs** — Markdown, Word (.docx), RIS (for reference managers), JSON
-- **Adaptive QA** — confidence-gated retrieval for yes/no questions
+- **Persistent config** — save your defaults, works across sessions
 - **LLM integration** — works with OpenAI, Anthropic, or any OpenAI-compatible API
 - **Rate-limited** — respects NCBI guidelines (3 req/s default, 10 with API key)
 - **Zero dependencies** — single static binary, ~5ms startup
-- **Pipe-friendly** — compose with `jq`, `xargs`, or any scripting language
+- **10 commands** — wizard, synth, search, fetch, cited-by, references, related, mesh, qa, config
 
 ## 📦 Installation
 
@@ -55,9 +55,11 @@ go build -o pubmed ./cmd/pubmed
 
 ### What you get
 
-One command, eight subcommands:
+One command, ten subcommands:
 
 ```
+pubmed wizard    # Interactive synthesis wizard ✨
+pubmed synth     # Synthesize literature with citations
 pubmed search    # Search PubMed
 pubmed fetch     # Get article details
 pubmed cited-by  # Find citing papers
@@ -65,7 +67,7 @@ pubmed references # Find referenced papers
 pubmed related   # Find similar papers
 pubmed mesh      # Look up MeSH terms
 pubmed qa        # Answer yes/no questions (benchmark)
-pubmed synth     # Synthesize literature with citations (v0.4.0+)
+pubmed config    # Manage wizard settings
 ```
 
 ## ⚙️ Configuration
@@ -113,6 +115,30 @@ This approach:
 Install Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 ## 🚀 Commands
+
+### wizard — Interactive synthesis wizard ✨
+
+The easiest way to create a literature synthesis. Beautiful step-by-step interface with sensible defaults.
+
+```bash
+pubmed wizard
+```
+
+Walks you through:
+1. Enter your research question
+2. Set paper count and word length (or accept defaults)
+3. Choose output format (Word + RIS, Markdown, JSON)
+4. Watch the synthesis happen with a progress spinner
+5. Get your files saved to `~/Documents/PubMed Syntheses/`
+
+**Configure defaults:**
+```bash
+pubmed config show    # View current settings
+pubmed config set     # Interactive editor
+pubmed config reset   # Reset to defaults
+```
+
+Config is stored in `~/.config/pubmed-cli/config.json` (cross-platform).
 
 ### synth — Synthesize literature with citations
 
@@ -323,28 +349,22 @@ The `qa` command implements **confidence-gated adaptive retrieval**: the model o
 ```
 pubmed-cli/
 ├── cmd/pubmed/           # CLI entry point (Cobra)
-│   ├── main.go           # Root command + search/fetch/mesh/link commands
-│   ├── qa.go             # QA command (yes/no benchmark)
-│   └── synth.go          # Synthesis command (literature review)
+│   ├── main.go           # Root command + search/fetch/mesh/link
+│   ├── wizard.go         # Interactive synthesis wizard (huh)
+│   ├── config.go         # Configuration management
+│   ├── synth.go          # Synthesis command
+│   └── qa.go             # QA benchmark command
 ├── internal/
 │   ├── eutils/           # NCBI E-utilities client
-│   │   ├── client.go     # Rate-limited HTTP transport
-│   │   ├── search.go     # ESearch
-│   │   ├── fetch.go      # EFetch + XML parsing
-│   │   ├── link.go       # ELink (citations, related)
-│   │   └── types.go      # Domain types
-│   ├── llm/              # LLM client abstraction
-│   │   ├── client.go     # OpenAI-compatible API
-│   │   └── claude.go     # Claude CLI wrapper
-│   ├── qa/               # Adaptive retrieval for yes/no
-│   │   └── adaptive.go   # Novelty detection, confidence gating
+│   ├── llm/              # LLM client (OpenAI + Claude CLI)
 │   ├── synth/            # Literature synthesis engine
-│   │   ├── engine.go     # Main synthesis workflow
-│   │   ├── relevance.go  # LLM-based relevance scoring
-│   │   └── ris.go        # RIS export for reference managers
+│   ├── qa/               # Adaptive retrieval for yes/no
 │   ├── mesh/             # MeSH descriptor lookup
-│   └── output/           # JSON / human / CSV formatters
+│   └── output/           # Formatters
 └── go.mod
+
+Config: ~/.config/pubmed-cli/config.json (cross-platform)
+Output: ~/Documents/PubMed Syntheses/ (configurable)
 ```
 
 ## 🧪 Development
