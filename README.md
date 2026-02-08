@@ -171,21 +171,34 @@ Config is stored in `~/.config/pubmed-cli/config.json` (cross-platform).
 
 The main research tool. Searches PubMed, scores papers for relevance, and synthesizes findings into paragraphs with proper citations.
 
-```bash
-# Basic synthesis — outputs markdown
-pubmed synth "SGLT-2 inhibitors in liver fibrosis"
+**By default, auto-saves Word document + RIS file to `~/Documents/PubMed Syntheses/`**
 
-# Word document + RIS file for reference managers
-pubmed synth "CBT for pediatric anxiety" --docx review.docx --ris refs.ris
+```bash
+# Basic synthesis — auto-saves docx + ris
+pubmed synth "SGLT-2 inhibitors in liver fibrosis" --claude
+
+# Output:
+# 📊 30 papers searched → 30 scored → 5 used
+# 📝 287 words, ~1423 tokens
+#
+# 📄 Files saved:
+#    ~/Documents/PubMed Syntheses/sglt2-inhibitors-in-liver-fibrosis-2026-02-07-201500.docx
+#    ~/Documents/PubMed Syntheses/sglt2-inhibitors-in-liver-fibrosis-2026-02-07-201500.ris
+
+# Custom output paths
+pubmed synth "CBT for pediatric anxiety" --docx review.docx --ris refs.ris --claude
 
 # More papers, longer output
-pubmed synth "autism biomarkers" --papers 10 --words 500
+pubmed synth "autism biomarkers" --papers 10 --words 500 --claude
 
 # Single paper deep dive
-pubmed synth --pmid 41234567 --words 400
+pubmed synth --pmid 41234567 --words 400 --claude
 
-# JSON for agents
-pubmed synth "treatments for fragile x" --json
+# Output to stdout only (no files saved)
+pubmed synth "treatments for fragile x" --no-save --claude
+
+# JSON for agents (also skips file saving)
+pubmed synth "treatments for fragile x" --json --claude
 ```
 
 **How it works:**
@@ -194,13 +207,12 @@ pubmed synth "treatments for fragile x" --json
 2. **Score** — LLM rates each paper's relevance to your question (1-10)
 3. **Filter** — Keeps papers above threshold (default: ≥7)
 4. **Synthesize** — Generates cohesive paragraphs with inline citations
-5. **Export** — Outputs markdown, Word doc, RIS, or JSON
+5. **Save** — Auto-saves Word doc + RIS to Documents folder
 
 **Output includes:**
-- Synthesis paragraph(s) with inline citations (APA style)
-- Numbered reference list with PMIDs and DOIs
-- Token usage statistics
+- Word document with synthesis and formatted references
 - RIS file for EndNote/Zotero/Mendeley import
+- Summary with paper counts and token usage
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -208,10 +220,11 @@ pubmed synth "treatments for fragile x" --json
 | `--search N` | 30 | Papers to search before filtering |
 | `--relevance N` | 7 | Minimum relevance score (1-10) |
 | `--words N` | 250 | Target word count |
-| `--docx FILE` | — | Output Word document |
-| `--ris FILE` | — | Output RIS for reference managers |
+| `--docx FILE` | auto | Output Word document path |
+| `--ris FILE` | auto | Output RIS file path |
+| `--no-save` | — | Don't auto-save files |
 | `--pmid ID` | — | Deep dive on single paper |
-| `--json` | — | Structured JSON output |
+| `--json` | — | Structured JSON output (no files) |
 | `--claude` | — | Use Claude CLI (no API key) |
 
 ### qa — Answer biomedical questions
