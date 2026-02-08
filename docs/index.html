@@ -537,40 +537,58 @@ pubmed search "CRISPR" --sort cited --limit 10 --human</code><button class="copy
         
         <p>
             The <code>synth</code> command searches PubMed, scores papers for relevance, 
-            and generates a narrative synthesis with proper citations:
+            and generates a narrative synthesis with proper citations. <strong>By default, it 
+            automatically saves a Word document and RIS file</strong> to your Documents folder:
         </p>
         
-        <pre><code>pubmed synth "FMRP function in synaptic plasticity" --papers 5 --words 200 --claude</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+        <pre><code>pubmed synth "FMRP function in synaptic plasticity" --claude</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
         
         <div class="output">
             <div class="output-label">Output</div>
-            <pre style="margin: 0; background: transparent; padding: 0;"># FMRP function in synaptic plasticity
+            <pre style="margin: 0; background: transparent; padding: 0;">⣾ Searching PubMed...
+⣽ Fetching paper metadata...
+⣻ Scoring paper 5/30 for relevance...
+████████████░░░░░░░░░░░░░░░░░░░░  5/30
+⣷ Generating synthesis...
 
-*Searched 30 papers, scored 30, used 5*
+📊 30 papers searched → 30 scored → 5 used
+📝 287 words, ~1423 tokens
 
-## Synthesis
-
-FMRP plays critical roles in regulating synaptic structure and function 
-through multiple mechanisms. At postsynaptic sites, FMRP deficiency leads 
-to aberrant postsynaptic organization... (Zhang et al., 2026). FMRP also 
-controls surface expression of NMDA receptor subunits... (Corti et al., 2025).
-
-## References
-
-1. Zhang, Z., et al. (2026). Autophagy controls hippocampal postsynaptic 
-   organization... Molecular psychiatry. [PMID: 40931164]
-...</pre>
+📄 Files saved:
+   ~/Documents/PubMed Syntheses/fmrp-function-in-synaptic-plasticity-2026-02-07-201500.docx
+   ~/Documents/PubMed Syntheses/fmrp-function-in-synaptic-plasticity-2026-02-07-201500.ris</pre>
         </div>
         
-        <h3>Export Options</h3>
-        <pre><code># Word document
-pubmed synth "ketamine for depression" --papers 5 --docx review.docx --claude
+        <p>
+            The Word document contains your synthesis with formatted citations. 
+            The RIS file can be imported into reference managers like EndNote, Zotero, or Mendeley.
+        </p>
+
+        <h3>Interactive Wizard</h3>
+        <p>
+            For a guided experience with beautiful terminal forms, use the wizard:
+        </p>
+        <pre><code>pubmed wizard</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+        <p>
+            The wizard walks you through each step: entering your question, setting paper count 
+            and word length, and choosing output format.
+        </p>
+        
+        <h3>Customizing Output</h3>
+        <pre><code># More papers, longer output
+pubmed synth "autism biomarkers" --papers 10 --words 500 --claude
+
+# Custom output paths
+pubmed synth "ketamine for depression" --docx my-review.docx --ris my-refs.ris --claude
 
 # BibTeX (for LaTeX)
-pubmed synth "ketamine for depression" --papers 5 --bibtex refs.bib --claude
+pubmed synth "ketamine for depression" --bibtex refs.bib --claude
 
-# RIS (for EndNote/Zotero)
-pubmed synth "ketamine for depression" --papers 5 --ris refs.ris --claude</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+# Output to terminal only (no files saved)
+pubmed synth "ketamine for depression" --no-save --claude
+
+# JSON for scripts/AI agents
+pubmed synth "ketamine for depression" --json --claude</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
 
         <h2 id="qa">Answering Research Questions</h2>
         
@@ -633,8 +651,13 @@ pubmed synth "ketamine for depression" --papers 5 --ris refs.ris --claude</code>
                 <td><code>pubmed related 12345678</code></td>
             </tr>
             <tr>
+                <td><code>wizard</code></td>
+                <td>Interactive synthesis</td>
+                <td><code>pubmed wizard</code></td>
+            </tr>
+            <tr>
                 <td><code>synth</code></td>
-                <td>Generate synthesis</td>
+                <td>Generate synthesis (auto-saves)</td>
                 <td><code>pubmed synth "topic" --claude</code></td>
             </tr>
             <tr>
@@ -644,7 +667,7 @@ pubmed synth "ketamine for depression" --papers 5 --ris refs.ris --claude</code>
             </tr>
             <tr>
                 <td><code>config</code></td>
-                <td>Manage settings</td>
+                <td>Manage wizard settings</td>
                 <td><code>pubmed config show</code></td>
             </tr>
         </table>
@@ -686,6 +709,10 @@ pubmed synth "ketamine for depression" --papers 5 --ris refs.ris --claude</code>
             <tr>
                 <td><code>--full</code></td>
                 <td>Show full abstracts (with --human)</td>
+            </tr>
+            <tr>
+                <td><code>--no-save</code></td>
+                <td>Don't auto-save files (synth only)</td>
             </tr>
         </table>
 
