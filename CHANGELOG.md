@@ -4,6 +4,13 @@ All notable changes to pubmed-cli will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-02-07
+
+### Changed
+- **Auto-save by default**: `synth` now automatically saves docx + ris to `~/Documents/PubMed Syntheses/`
+- Use `--no-save` or `--json` to output to stdout only
+- Shows summary after synthesis (papers searched/scored/used, words, files saved)
+
 ## [0.5.2] - 2026-02-07
 
 ### Added

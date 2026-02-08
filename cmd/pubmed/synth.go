@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -35,6 +38,7 @@ var (
 	synthFlagOpus      bool
 	synthFlagMd        bool
 	synthFlagUnsafe    bool
+	synthFlagNoSave    bool
 )
 
 func init() {
@@ -51,7 +55,8 @@ func init() {
 	synthCmd.Flags().BoolVar(&synthFlagClaude, "claude", false, "Use Claude CLI (no API key needed)")
 	synthCmd.Flags().BoolVar(&synthFlagCodex, "codex", false, "Use OpenAI Codex CLI (no API key needed)")
 	synthCmd.Flags().BoolVar(&synthFlagOpus, "opus", false, "Use Claude Opus model (with --claude)")
-	synthCmd.Flags().BoolVar(&synthFlagMd, "md", false, "Output markdown to stdout (default if no --docx)")
+	synthCmd.Flags().BoolVar(&synthFlagMd, "md", false, "Output markdown to stdout instead of saving files")
+	synthCmd.Flags().BoolVar(&synthFlagNoSave, "no-save", false, "Don't auto-save files (output to stdout only)")
 	synthCmd.Flags().BoolVar(&synthFlagUnsafe, "unsafe", false, "Enable full LLM access (DANGEROUS: bypasses sandbox)")
 
 	rootCmd.AddCommand(synthCmd)
@@ -62,11 +67,13 @@ var synthCmd = &cobra.Command{
 	Short: "Synthesize literature on a topic with citations",
 	Long: `Search PubMed, filter by relevance, and synthesize findings into paragraphs with citations.
 
+By default, saves Word document + RIS file to ~/Documents/PubMed Syntheses/
+
 Examples:
-  # Basic synthesis (markdown output)
+  # Basic synthesis (auto-saves docx + ris)
   pubmed synth "SGLT-2 inhibitors in liver fibrosis"
 
-  # Word document + RIS file
+  # Custom output paths
   pubmed synth "CBT for pediatric anxiety" --docx review.docx --ris refs.ris
 
   # BibTeX export
@@ -78,7 +85,10 @@ Examples:
   # Single paper deep dive
   pubmed synth --pmid 41234567 --words 400
 
-  # JSON for agents
+  # Output to stdout only (no files saved)
+  pubmed synth "treatments for fragile x" --no-save
+  
+  # JSON for agents (no files saved)
   pubmed synth "treatments for fragile x" --json
 
 Environment:
@@ -279,28 +289,51 @@ func writeBibTeXFile(path string, result *synth.Result) error {
 }
 
 // handleSynthResult writes output files and displays results.
+// By default, auto-saves docx + ris to ~/Documents/PubMed Syntheses/
 func handleSynthResult(ctx context.Context, result *synth.Result) error {
 	if result == nil {
 		return errors.New("synthesis returned nil result")
 	}
 
-	// Write RIS file if requested.
-	if synthFlagRIS != "" {
-		if err := writeRISFile(synthFlagRIS, result); err != nil {
-			return err
+	// Determine output paths - auto-generate if not specified and not --no-save
+	docxPath := synthFlagDocx
+	risPath := synthFlagRIS
+	bibtexPath := synthFlagBibTeX
+
+	// Auto-save by default unless --no-save, --md, or --json
+	autoSave := !synthFlagNoSave && !synthFlagMd && !flagJSON
+	if autoSave && docxPath == "" && risPath == "" {
+		// Generate default paths
+		folder := getSynthOutputFolder()
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			return fmt.Errorf("create output folder: %w", err)
 		}
+		baseName := generateSynthFilename(result.Question)
+		docxPath = filepath.Join(folder, baseName+".docx")
+		risPath = filepath.Join(folder, baseName+".ris")
 	}
 
-	// Write BibTeX file if requested.
-	if synthFlagBibTeX != "" {
-		if err := writeBibTeXFile(synthFlagBibTeX, result); err != nil {
+	var savedFiles []string
+
+	// Write RIS file
+	if risPath != "" {
+		if err := writeRISFile(risPath, result); err != nil {
 			return err
 		}
+		savedFiles = append(savedFiles, risPath)
 	}
 
-	// Write DOCX if requested.
-	if synthFlagDocx != "" {
-		if err := writeDocx(ctx, synthFlagDocx, result); err != nil {
+	// Write BibTeX file if requested
+	if bibtexPath != "" {
+		if err := writeBibTeXFile(bibtexPath, result); err != nil {
+			return err
+		}
+		savedFiles = append(savedFiles, bibtexPath)
+	}
+
+	// Write DOCX
+	if docxPath != "" {
+		if err := writeDocx(ctx, docxPath, result); err != nil {
 			var w *docxFallbackWarning
 			if errors.As(err, &w) {
 				fmt.Fprintln(os.Stderr, w.Error())
@@ -308,19 +341,73 @@ func handleSynthResult(ctx context.Context, result *synth.Result) error {
 				return fmt.Errorf("write DOCX: %w", err)
 			}
 		} else {
-			fmt.Fprintf(os.Stderr, "✓ Wrote %s\n", synthFlagDocx)
+			fmt.Fprintf(os.Stderr, "✓ Wrote %s\n", docxPath)
+			savedFiles = append(savedFiles, docxPath)
 		}
 	}
 
-	// Output.
+	// Output
 	if flagJSON {
 		return outputJSON(result)
 	}
-	// If the user requested a file output, default to being quiet unless --md is set.
+
+	// Show summary if we auto-saved
+	if len(savedFiles) > 0 && autoSave {
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintf(os.Stderr, "📊 %d papers searched → %d scored → %d used\n",
+			result.PapersSearched, result.PapersScored, result.PapersUsed)
+		fmt.Fprintf(os.Stderr, "📝 %d words, ~%d tokens\n",
+			countSynthWords(result.Synthesis), result.Tokens.Total)
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "📄 Files saved:")
+		for _, f := range savedFiles {
+			fmt.Fprintf(os.Stderr, "   %s\n", f)
+		}
+		return nil
+	}
+
+	// If explicit file output was requested, be quiet unless --md
 	if synthFlagDocx != "" && !synthFlagMd {
 		return nil
 	}
 	return outputMarkdown(result)
+}
+
+// getSynthOutputFolder returns the default output folder for synth files.
+func getSynthOutputFolder() string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return "pubmed-syntheses"
+	}
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		return filepath.Join(home, "Documents", "PubMed Syntheses")
+	default:
+		return filepath.Join(home, "pubmed-syntheses")
+	}
+}
+
+// generateSynthFilename creates a filename from the question.
+func generateSynthFilename(question string) string {
+	// Create a slug from the question
+	slug := strings.ToLower(question)
+	// Remove non-alphanumeric characters except spaces
+	reg := regexp.MustCompile(`[^a-z0-9\s]+`)
+	slug = reg.ReplaceAllString(slug, "")
+	// Replace spaces with hyphens
+	slug = strings.Join(strings.Fields(slug), "-")
+	// Truncate to reasonable length
+	if len(slug) > 40 {
+		slug = slug[:40]
+	}
+	// Add timestamp
+	timestamp := time.Now().Format("2006-01-02-150405")
+	return fmt.Sprintf("%s-%s", slug, timestamp)
+}
+
+// countSynthWords counts words in the synthesis text.
+func countSynthWords(text string) int {
+	return len(strings.Fields(text))
 }
 
 // runSynth orchestrates the synthesis workflow.
