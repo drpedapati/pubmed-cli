@@ -4,12 +4,25 @@ All notable changes to pubmed-cli will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-02-07
+
 ### Added
 - Codex CLI integration (`--codex` flag)
 - Claude Opus model support (`--opus` flag)
 - Input sanitization for prompt injection protection
 - Sandbox mode selection for Codex
 - `--unsafe` flag for full sandbox access
+- Technical Design Document (TDD.md)
+- GitHub Pages documentation site
+
+### Changed
+- Link commands (`cited-by`, `references`, `related`) now show titles in human mode
+- Progress messages show in real-time for non-TTY environments
+
+### Fixed
+- Accurate token counting for relevance scoring
+- Client security config properly applied to Claude/Codex
+- Removed dead code (staticcheck clean)
 
 ### Security
 - Added prompt validation and sanitization

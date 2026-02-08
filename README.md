@@ -4,7 +4,7 @@
     <strong>PubMed from your terminal. Built for humans and AI agents.</strong>
   </p>
   <p align="center">
-    <a href="https://github.com/henrybloomingdale/pubmed-cli/releases/latest"><img src="https://img.shields.io/badge/version-0.5.0-blue?style=flat-square" alt="v0.5.0"></a>
+    <a href="https://github.com/henrybloomingdale/pubmed-cli/releases/latest"><img src="https://img.shields.io/badge/version-0.5.2-blue?style=flat-square" alt="v0.5.0"></a>
     <img src="https://img.shields.io/badge/go-1.25-00ADD8?style=flat-square&logo=go" alt="Go 1.25">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   </p>
