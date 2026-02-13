@@ -45,6 +45,20 @@ func TestFormatSearchHuman_WithArticles(t *testing.T) {
 	}
 }
 
+func TestTruncate_UTF8Safe(t *testing.T) {
+	input := "αβγδεζηθικλμ"
+	got := truncate(input, 6)
+
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("expected ellipsis suffix, got %q", got)
+	}
+
+	// Ensure output remains valid UTF-8 and rune-limited.
+	if !strings.Contains(got, "α") {
+		t.Fatalf("expected retained UTF-8 runes, got %q", got)
+	}
+}
+
 func TestFormatSearchHuman_Empty(t *testing.T) {
 	result := &eutils.SearchResult{Count: 0, IDs: []string{}}
 

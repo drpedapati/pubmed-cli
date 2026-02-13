@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/henrybloomingdale/pubmed-cli/internal/eutils"
@@ -25,6 +26,12 @@ var (
 	flagAPIKey string
 )
 
+var allowedSorts = map[string]struct{}{
+	"relevance": {},
+	"date":      {},
+	"cited":     {},
+}
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -35,6 +42,9 @@ var rootCmd = &cobra.Command{
 	Use:   "pubmed",
 	Short: "PubMed E-utilities CLI",
 	Long:  `A command-line interface for searching and retrieving articles from NCBI PubMed using the E-utilities API.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return validateGlobalFlags()
+	},
 }
 
 func init() {
@@ -104,17 +114,59 @@ func buildQuery(args []string) string {
 		}
 	}
 
-	// Add year filter
-	if flagYear != "" {
-		parts := strings.SplitN(flagYear, "-", 2)
-		if len(parts) == 2 {
-			query += fmt.Sprintf(" AND %s:%s[pdat]", parts[0], parts[1])
-		} else {
-			query += fmt.Sprintf(" AND %s[pdat]", parts[0])
+	return query
+}
+
+func parseYearRange(value string) (string, string, error) {
+	parts := strings.SplitN(strings.TrimSpace(value), "-", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return "", "", fmt.Errorf("year must be YYYY or YYYY-YYYY")
+	}
+
+	if len(parts[0]) != 4 {
+		return "", "", fmt.Errorf("year must be YYYY or YYYY-YYYY")
+	}
+	start, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return "", "", fmt.Errorf("year must be numeric")
+	}
+
+	if len(parts) == 1 {
+		return parts[0], parts[0], nil
+	}
+
+	if parts[1] == "" || len(parts[1]) != 4 {
+		return "", "", fmt.Errorf("year range must be YYYY-YYYY")
+	}
+	end, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return "", "", fmt.Errorf("year range must be numeric")
+	}
+	if end < start {
+		return "", "", fmt.Errorf("year range must be ascending")
+	}
+
+	return parts[0], parts[1], nil
+}
+
+func validateGlobalFlags() error {
+	if flagLimit <= 0 {
+		return fmt.Errorf("--limit must be greater than 0")
+	}
+
+	if flagSort != "" {
+		if _, ok := allowedSorts[strings.ToLower(flagSort)]; !ok {
+			return fmt.Errorf("--sort must be one of: relevance, date, cited")
 		}
 	}
 
-	return query
+	if flagYear != "" {
+		if _, _, err := parseYearRange(flagYear); err != nil {
+			return fmt.Errorf("--year %q is invalid: %w", flagYear, err)
+		}
+	}
+
+	return nil
 }
 
 func validatePMID(pmid string) error {
@@ -178,15 +230,16 @@ var searchCmd = &cobra.Command{
 
 		opts := &eutils.SearchOptions{
 			Limit: flagLimit,
-			Sort:  flagSort,
+			Sort:  strings.ToLower(flagSort),
 		}
 
 		if flagYear != "" {
-			parts := strings.SplitN(flagYear, "-", 2)
-			if len(parts) == 2 {
-				opts.MinDate = parts[0]
-				opts.MaxDate = parts[1]
+			minDate, maxDate, err := parseYearRange(flagYear)
+			if err != nil {
+				return fmt.Errorf("invalid --year value %q: %w", flagYear, err)
 			}
+			opts.MinDate = minDate
+			opts.MaxDate = maxDate
 		}
 
 		result, err := client.Search(cmd.Context(), query, opts)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -29,10 +30,15 @@ var (
 
 // truncate cuts a string to maxLen characters, appending "…" if truncated.
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen-1] + "…"
+
+	runes := []rune(s)
+	if maxLen <= 1 {
+		return "…"
+	}
+	return string(runes[:maxLen-1]) + "…"
 }
 
 // --- Search ---
@@ -193,8 +199,9 @@ func formatArticlesHuman(w io.Writer, articles []eutils.Article, full bool) erro
 			fmt.Fprintln(w)
 			fmt.Fprintf(w, "  %s\n", labelStyle.Render("Abstract:"))
 			abstract := a.Abstract
-			if !full && len(abstract) > 500 {
-				abstract = abstract[:497] + "..."
+			if !full && utf8.RuneCountInString(abstract) > 500 {
+				runes := []rune(abstract)
+				abstract = string(runes[:497]) + "..."
 				fmt.Fprintf(w, "  %s\n", abstract)
 				fmt.Fprintf(w, "  %s\n", dim.Render("[use --full for complete abstract]"))
 			} else {
