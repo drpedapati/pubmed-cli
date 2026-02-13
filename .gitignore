@@ -20,3 +20,6 @@ Thumbs.db
 # Release binaries
 pubmed-darwin-*
 pubmed-linux-*
+
+# Local planning artifacts
+plans/
