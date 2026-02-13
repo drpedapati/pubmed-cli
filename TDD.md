@@ -37,7 +37,7 @@ Out of scope on `main`:
 - MeSH lookup adapter.
 
 - `internal/output`
-- `json`, `human`, and `csv` output paths.
+- `json`, `human`, `csv`, and `ris` output paths.
 
 ## 3. Reliability Controls
 
@@ -48,6 +48,7 @@ Out of scope on `main`:
   - sort must be valid
   - year format/range validation
   - PMID digit validation
+  - RIS export command-scope validation (`fetch` + link commands only)
 - UTF-8 safe truncation in human output mode.
 - Defensive handling for empty link/article outputs.
 
@@ -57,6 +58,7 @@ Out of scope on `main`:
 - `fetch --json` returns article details including abstracts, authors, MeSH metadata.
 - Link commands return source id plus linked pmids (+score for related when available).
 - `mesh --json` returns UI, name, scope note, tree numbers, and entry terms.
+- `--ris FILE` writes EndNote/Zotero-compatible citation records for `fetch`, `cited-by`, `references`, and `related`.
 
 ## 5. Testing Strategy
 
@@ -71,6 +73,7 @@ High-value tests include:
 - PMID normalization/validation
 - UTF-8-safe human output truncation
 - malformed flag rejection
+- RIS file output generation and compatibility formatting
 
 ## 6. Operational Risks
 

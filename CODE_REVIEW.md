@@ -26,6 +26,11 @@ Scope: `main` branch, non-AI command set
 - Impact: potential broken glyph output on truncation boundaries
 - Resolution: Switched to rune-safe truncation logic.
 
+5. High: no native RIS export for reference-manager workflows
+- Area: `cmd/pubmed/main.go`, `internal/output`
+- Impact: users had no direct EndNote/Zotero import path on `main`
+- Resolution: added `--ris FILE` export for `fetch`, `cited-by`, `references`, and `related`, with conservative RIS tags for broad compatibility.
+
 ## Verification
 
 - `go test ./...` passed.

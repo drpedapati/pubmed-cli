@@ -26,9 +26,11 @@ Use a freshly built local binary and run at least these commands:
 ./pubmed --help
 ./pubmed search "autism" --limit 2 --human
 ./pubmed fetch "38000001,38000002" --json
+./pubmed fetch "38000001,38000002" --ris /tmp/fetch.ris
 ./pubmed cited-by 38000001 --limit 2 --human
 ./pubmed references 38000001 --limit 2 --human
 ./pubmed related 38000001 --limit 2 --human
+./pubmed related 38000001 --limit 2 --ris /tmp/related.ris
 ./pubmed mesh depression --human
 ```
 
@@ -39,6 +41,8 @@ Negative-path checks (must fail cleanly, no panics):
 ./pubmed search autism --sort newest
 ./pubmed search autism --year 2025-2020
 ./pubmed fetch abc123
+./pubmed search autism --ris /tmp/search.ris
+./pubmed mesh depression --ris /tmp/mesh.ris
 ```
 
 ## 3. Documentation Gate

@@ -92,7 +92,9 @@
       <h2>Quick Start</h2>
       <pre><code>pubmed search "autism" --limit 5 --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
       <pre><code>pubmed fetch "38000001,38000002" --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+      <pre><code>pubmed fetch "38000001,38000002" --ris refs.ris</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
       <pre><code>pubmed related 38000001 --limit 5 --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+      <pre><code>pubmed related 38000001 --limit 10 --ris related.ris</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
     </section>
 
     <section>
@@ -116,6 +118,7 @@
         <tr><td><code>--sort</code></td><td>Only <code>relevance</code>, <code>date</code>, <code>cited</code></td></tr>
         <tr><td><code>--year</code></td><td>Format <code>YYYY</code> or <code>YYYY-YYYY</code> with ascending range</td></tr>
         <tr><td><code>PMID args</code></td><td>Digits only for fetch/link commands</td></tr>
+        <tr><td><code>--ris FILE</code></td><td>Supported only for <code>fetch</code>, <code>cited-by</code>, <code>references</code>, and <code>related</code></td></tr>
       </table>
       <p><span class="ok">Pass/fail behavior is explicit</span>: invalid values now return clear errors and do not crash.</p>
     </section>

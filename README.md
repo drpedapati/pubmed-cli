@@ -49,10 +49,14 @@ pubmed fetch 38000001 --human --full
 pubmed fetch 38000001 38000002 --json
 pubmed fetch "38000001,38000002" --json
 
+# Export RIS for EndNote/Zotero import
+pubmed fetch 38000001 38000002 --ris refs.ris
+
 # Citation graph
 pubmed cited-by 38000001 --limit 5 --json
 pubmed references 38000001 --limit 5 --json
 pubmed related 38000001 --limit 5 --human
+pubmed related 38000001 --limit 10 --ris related.ris
 
 # MeSH lookup
 pubmed mesh "depression" --json
@@ -67,6 +71,7 @@ pubmed mesh "depression" --json
 | `--json` | Structured JSON output |
 | `--human`, `-H` | Rich terminal rendering |
 | `--csv FILE` | Export current result to CSV |
+| `--ris FILE` | Export citations in RIS format (fetch/link commands) |
 | `--full` | Show full abstract text (human article output) |
 | `--limit N` | Maximum results (must be `> 0`) |
 | `--sort` | `relevance`, `date`, or `cited` |
@@ -81,6 +86,7 @@ The CLI now fails fast for common mistakes:
 - Invalid `--sort` values are rejected.
 - Invalid year formats and descending ranges are rejected.
 - Invalid PMIDs (non-digits) are rejected in `fetch`, `cited-by`, `references`, and `related`.
+- `--ris` is supported on `fetch`, `cited-by`, `references`, and `related` (rejected for `search` and `mesh`).
 
 ## Production Reliability Notes
 

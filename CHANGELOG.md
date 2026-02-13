@@ -4,6 +4,14 @@ All notable changes to pubmed-cli are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- RIS export support via `--ris FILE` for:
+  - `fetch`
+  - `cited-by`
+  - `references`
+  - `related`
+- RIS records are written in a conservative EndNote/Zotero-compatible format.
+
 ### Fixed
 - Prevented runtime panic when link commands are run with invalid limits (for example `--limit -1`).
 - Added global input validation for:
