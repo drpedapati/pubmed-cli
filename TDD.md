@@ -1,36 +1,85 @@
-# Technical Design Document: pubmed-cli (Non-AI Mainline)
+# Technical Design Document: pubmed-cli (Main Branch)
 
-This document tracks current architecture for the `main` branch after the AI feature rollback.
+Version: 1.1
+Date: 2026-02-13
 
-## Current Command Surface
+## 1. Scope
 
-- `search` — NCBI search
-- `fetch` — retrieve article and abstract payloads
-- `cited-by` — get citing papers
-- `references` — get paper references
-- `related` — get related work
-- `mesh` — MeSH term lookup
+`main` is the non-AI production command surface for deterministic PubMed workflows.
 
-## Scope and Constraints
+Commands:
+- `search`
+- `fetch`
+- `cited-by`
+- `references`
+- `related`
+- `mesh`
 
-- No AI synthesis, QA, or wizard command paths are included on `main`.
-- This branch must remain NCBI-data focused and deterministic for scriptable output.
+Out of scope on `main`:
+- AI synthesis and QA command paths (maintained separately on `ai-features`).
 
-## Package Layout (Current)
+## 2. Architecture
 
-- `cmd/pubmed`: Cobra CLI entrypoint and command handlers.
-- `internal/eutils`: NCBI client adapters for search/fetch/link APIs.
-- `internal/mesh`: MeSH lookup helpers.
-- `internal/output`: Output formatters (`json`, `human`, `csv`).
-- `internal/ncbi`: Shared NCBI client primitives and response guardrails.
+- `cmd/pubmed`
+- CLI wiring, flag validation, command handlers.
 
-## Reliability Criteria
+- `internal/ncbi`
+- Shared HTTP base client.
+- NCBI rate limiting.
+- Common request parameters (`api_key`, `tool`, `email`).
+- Retry/backoff for transient `429` responses.
+- Response size limits.
 
-- Search/filter semantics match NCBI API behavior.
-- Fetch and link traversals handle API errors without crashes.
-- JSON schema remains stable for scripted consumption.
-- Output size guards protect against malformed or unexpectedly large responses.
+- `internal/eutils`
+- PubMed ESearch, EFetch, ELink adapters.
 
-## Historical Note
+- `internal/mesh`
+- MeSH lookup adapter.
 
-AI/LLM work existed in prior history and is now maintained on the `ai-features` branch.
+- `internal/output`
+- `json`, `human`, and `csv` output paths.
+
+## 3. Reliability Controls
+
+- Context-aware request execution for cancellation.
+- Rate-limited outbound calls with API-key-aware limits.
+- Guardrails for malformed user input:
+  - limit must be positive
+  - sort must be valid
+  - year format/range validation
+  - PMID digit validation
+- UTF-8 safe truncation in human output mode.
+- Defensive handling for empty link/article outputs.
+
+## 4. Data Contracts
+
+- `search --json` returns count, id list, translated query metadata.
+- `fetch --json` returns article details including abstracts, authors, MeSH metadata.
+- Link commands return source id plus linked pmids (+score for related when available).
+- `mesh --json` returns UI, name, scope note, tree numbers, and entry terms.
+
+## 5. Testing Strategy
+
+Current gates:
+- `go test ./...`
+- `go vet ./...`
+- real-user command smoke testing before release
+
+High-value tests include:
+- concurrent rate-limit behavior
+- transient `429` handling
+- PMID normalization/validation
+- UTF-8-safe human output truncation
+- malformed flag rejection
+
+## 6. Operational Risks
+
+- External dependency risk: NCBI availability and policy changes.
+- Network variability may still cause user-visible transient failures despite retries.
+
+## 7. Release Criteria
+
+Release only when:
+- code quality gates pass
+- usability smoke tests pass without panic or silent coercion
+- docs are synchronized with actual command behavior

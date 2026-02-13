@@ -1,12 +1,22 @@
 # Changelog
 
-All notable changes to pubmed-cli will be documented in this file.
+All notable changes to pubmed-cli are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Prevented runtime panic when link commands are run with invalid limits (for example `--limit -1`).
+- Added global input validation for:
+  - `--limit` (must be greater than 0)
+  - `--sort` (must be one of `relevance`, `date`, `cited`)
+  - `--year` (must be `YYYY` or `YYYY-YYYY` with ascending range)
+- Added strict PMID validation for `fetch`, `cited-by`, `references`, and `related`.
+- Added support for robust comma-separated PMID parsing in `fetch`.
+- Made human-output truncation UTF-8 safe.
+- Added retry/backoff handling for transient NCBI `HTTP 429` responses.
+
 ### Changed
-- Mainline command set has been restored to the non-AI feature set: `search`, `fetch`, `cited-by`, `references`, `related`, `mesh`.
-- AI-only features (`synth`, `wizard`, `qa`) were removed from `main` and are tracked on the `ai-features` branch.
+- Refreshed all project documentation for production release on non-AI `main` branch.
 
 ## [0.2.0] - 2026-02-05
 
@@ -21,12 +31,12 @@ All notable changes to pubmed-cli will be documented in this file.
 
 ### Fixed
 - Rate limiting now uses `golang.org/x/time/rate` for concurrent behavior.
-- NCBI `Context` propagation enables clean cancellation.
+- NCBI context propagation enables clean cancellation.
 - Publication type filters now quote multi-word values safely.
 - XML parsing supports date/author edge cases.
 
 ### Changed
-- Added response size guards in NCBI clients.
+- Added response-size guards in NCBI clients.
 
 ## [0.1.0] - 2026-02-04
 

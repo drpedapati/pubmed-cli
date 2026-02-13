@@ -1,161 +1,130 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>pubmed-cli Testing Guide</title>
-    <style>
-        :root {
-            --bg: #0d1117;
-            --card: #161b22;
-            --border: #30363d;
-            --text: #c9d1d9;
-            --text-muted: #8b949e;
-            --accent: #58a6ff;
-            --green: #3fb950;
-            --yellow: #d29922;
-            --red: #f85149;
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        h1 { color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-        h2 { color: #3fb950; margin-top: 2rem; }
-        h3 { color: var(--text); margin-top: 1.5rem; }
-        .status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
-        .status.pass { background: #238636; color: white; }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; margin: 1rem 0; }
-        pre {
-            background: #0d1117;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1rem;
-            overflow-x: auto;
-            position: relative;
-        }
-        code { font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.9rem; }
-        .copy-btn {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            background: var(--border);
-            border: none;
-            color: var(--text);
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.75rem;
-        }
-        .copy-btn:hover { background: var(--accent); }
-        .copy-btn.copied { background: #3fb950; }
-        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
-        th, td { border: 1px solid var(--border); padding: 0.75rem; text-align: left; }
-        th { background: var(--card); }
-        .note { background: #1f2937; border-left: 4px solid var(--accent); padding: 1rem; margin: 1rem 0; }
-        .output {
-            background: #1a1a2e;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            padding: 1rem;
-            margin-top: 0.5rem;
-            max-height: 300px;
-            overflow-y: auto;
-            font-size: 0.85rem;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pubmed-cli Testing Guide</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --ok: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem;
+      max-width: 1100px;
+      margin-inline: auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    h1 { color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h2 { color: var(--ok); margin-top: 2rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+    pre {
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.9rem;
+      overflow: auto;
+      position: relative;
+    }
+    code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.9rem; }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: #1f2937;
+      color: var(--text);
+      border: 1px solid #4b5563;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .copy-btn:hover { border-color: var(--accent); }
+    .note {
+      border-left: 4px solid var(--accent);
+      background: #1f2937;
+      padding: 0.9rem;
+      margin: 1rem 0;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid var(--border); padding: 0.65rem; text-align: left; }
+    th { background: #182033; }
+    .muted { color: var(--muted); }
+  </style>
 </head>
 <body>
-    <h1>🧪 pubmed-cli Testing Guide</h1>
-    <p>Interactive testing guide for the non-AI command set.</p>
+  <h1>pubmed-cli Testing Guide</h1>
+  <p>Release-oriented manual test plan for the non-AI command set.</p>
 
-    <div class="note">
-        <strong>Prerequisite:</strong> Set your NCBI API key for higher request limits: <code>export NCBI_API_KEY="your-key"</code>
-    </div>
+  <div class="note">
+    <strong>Prerequisite:</strong> set an API key for smoother testing:
+    <code>export NCBI_API_KEY="your-key"</code>
+  </div>
 
-    <h2>📋 Quick Status</h2>
-    <table>
-        <tr><th>Category</th><th>Status</th><th>Commands</th></tr>
-        <tr><td>Search & Fetch</td><td><span class="status pass">PASS</span></td><td>search, fetch, mesh</td></tr>
-        <tr><td>Link Discovery</td><td><span class="status pass">PASS</span></td><td>cited-by, references, related</td></tr>
-        <tr><td>Output Formats</td><td><span class="status pass">PASS</span></td><td>JSON, CSV</td></tr>
-    </table>
+  <h2>Core Happy Paths</h2>
+  <div class="card">
+    <pre><code>pubmed --help</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed search "autism" --limit 2 --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed fetch "38000001,38000002" --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed cited-by 38000001 --limit 2 --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed references 38000001 --limit 2 --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed related 38000001 --limit 2 --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed mesh "depression" --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+  </div>
 
-    <h2>🔍 Search Commands</h2>
-    <h3>Basic Search</h3>
-    <div class="card">
-        <pre><code>pubmed search "fragile X syndrome" --limit 5 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
+  <h2>Validation Paths (Must Fail Cleanly)</h2>
+  <div class="card">
+    <pre><code>pubmed related 38000001 --limit -1</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed search autism --sort newest</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed search autism --year 2025-2020</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed fetch abc123</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+  </div>
 
-    <h3>Year Filter</h3>
-    <div class="card">
-        <pre><code>pubmed search "autism intervention" --year 2024-2025 --limit 5 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
+  <h2>Expected Outcomes</h2>
+  <table>
+    <tr><th>Case</th><th>Expected</th></tr>
+    <tr><td>Invalid limit</td><td>Error message, no panic/crash</td></tr>
+    <tr><td>Invalid sort</td><td>Error lists valid values: relevance/date/cited</td></tr>
+    <tr><td>Invalid year</td><td>Error explains format/range issue</td></tr>
+    <tr><td>Invalid PMID</td><td>Error indicates PMIDs must be digits</td></tr>
+    <tr><td>Comma-separated PMIDs</td><td>Fetch succeeds with parsed IDs</td></tr>
+  </table>
 
-    <h3>Publication Type Filter</h3>
-    <div class="card">
-        <pre><code>pubmed search "diabetes treatment" --type review --limit 3 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
+  <h2>CSV/JSON Export Checks</h2>
+  <div class="card">
+    <pre><code>pubmed search "autism" --limit 3 --csv /tmp/search.csv --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed fetch 38000001 38000002 --csv /tmp/fetch.csv</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+  </div>
 
-    <h2>📄 Fetch Commands</h2>
-    <h3>Single Article</h3>
-    <div class="card">
-        <pre><code>pubmed fetch 38000001 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
+  <p class="muted">Updated for production hardening pass on 2026-02-13.</p>
 
-    <h2>🔗 Link Discovery</h2>
-    <h3>Cited By</h3>
-    <div class="card">
-        <pre><code>pubmed cited-by 38000001 --limit 5 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
-
-    <h3>References</h3>
-    <div class="card">
-        <pre><code>pubmed references 38000001 --limit 10 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
-
-    <h3>Related Articles</h3>
-    <div class="card">
-        <pre><code>pubmed related 38000001 --limit 5 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
-
-    <h2>🏷️ MeSH Lookup</h2>
-    <div class="card">
-        <pre><code>pubmed mesh "autism" --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
-
-    <h2>🔧 Edge Cases</h2>
-    <h3>Empty Results</h3>
-    <div class="card">
-        <pre><code>pubmed search "xyznonexistentterm123abc" --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
-
-    <h3>Invalid PMID</h3>
-    <div class="card">
-        <pre><code>pubmed fetch 99999999999 --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
-    </div>
-
-    <hr style="margin: 3rem 0; border-color: #30363d;">
-    <p style="color: #8b949e; text-align: center;">pubmed-cli v0.5.0 · <a href="https://github.com/henrybloomingdale/pubmed-cli" style="color: #58a6ff;">GitHub</a></p>
-
-    <script>
-        function copyCmd(btn) {
-            const code = btn.parentElement.querySelector('code').textContent;
-            navigator.clipboard.writeText(code).then(() => {
-                btn.textContent = 'Copied!';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = 'Copy';
-                    btn.classList.remove('copied');
-                }, 1500);
-            });
-        }
-    </script>
+  <script>
+    function copyCmd(btn) {
+      const code = btn.parentElement.querySelector('code').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 900);
+      }).catch(() => {
+        btn.textContent = 'Failed';
+        setTimeout(() => btn.textContent = 'Copy', 900);
+      });
+    }
+  </script>
 </body>
 </html>

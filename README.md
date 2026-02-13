@@ -1,6 +1,14 @@
 # pubmed-cli
 
-A command-line interface for NCBI PubMed E-utilities. Search PubMed, fetch article details, explore citations, and look up MeSH terms — all from your terminal.
+`pubmed-cli` is a command-line interface for NCBI PubMed E-utilities.
+
+It focuses on deterministic, scriptable literature workflows on the `main` branch:
+- `search`
+- `fetch`
+- `cited-by`
+- `references`
+- `related`
+- `mesh`
 
 ## Installation
 
@@ -8,185 +16,96 @@ A command-line interface for NCBI PubMed E-utilities. Search PubMed, fetch artic
 go install github.com/henrybloomingdale/pubmed-cli/cmd/pubmed@latest
 ```
 
-Or build from source:
+Build from source:
 
 ```bash
 git clone https://github.com/henrybloomingdale/pubmed-cli.git
 cd pubmed-cli
-make build
+go build -o pubmed ./cmd/pubmed
 ```
 
 ## Configuration
 
-### NCBI API Key (recommended)
-
-Without an API key, NCBI limits you to 3 requests/second. With one, you get 10 req/sec.
-
-Get a free key at: https://www.ncbi.nlm.nih.gov/account/settings/
+Set your NCBI API key (recommended):
 
 ```bash
-# Set as environment variable
-export NCBI_API_KEY="your-key-here"
-
-# Or pass per-command
-pubmed search --api-key "your-key-here" "fragile x syndrome"
+export NCBI_API_KEY="your-key"
 ```
 
-## Usage
+NCBI rate limits:
+- Without key: 3 requests/second
+- With key: 10 requests/second
 
-### Search
+## Quick Start
 
 ```bash
 # Basic search
-pubmed search "fragile x syndrome"
+pubmed search "fragile x syndrome" --limit 5 --human
 
-# MeSH term search with date filter
-pubmed search '"fragile x syndrome"[MeSH] AND "electroencephalography"[MeSH]' --year 2020-2025
+# Fetch one PMID
+pubmed fetch 38000001 --human --full
 
-# Search with filters
-pubmed search "ADHD treatment" --type review --limit 10 --sort date
+# Fetch multiple PMIDs (space or comma-separated)
+pubmed fetch 38000001 38000002 --json
+pubmed fetch "38000001,38000002" --json
 
-# JSON output (pipe-friendly)
-pubmed search "autism biomarkers" --json | jq '.ids[]'
+# Citation graph
+pubmed cited-by 38000001 --limit 5 --json
+pubmed references 38000001 --limit 5 --json
+pubmed related 38000001 --limit 5 --human
+
+# MeSH lookup
+pubmed mesh "depression" --json
 ```
 
-### Fetch Article Details
+## Command Behavior
 
-```bash
-# Single article
-pubmed fetch 38123456
+### Global Flags
 
-# Multiple articles
-pubmed fetch 38123456 37987654 37876543
+| Flag | Description |
+|------|-------------|
+| `--json` | Structured JSON output |
+| `--human`, `-H` | Rich terminal rendering |
+| `--csv FILE` | Export current result to CSV |
+| `--full` | Show full abstract text (human article output) |
+| `--limit N` | Maximum results (must be `> 0`) |
+| `--sort` | `relevance`, `date`, or `cited` |
+| `--year` | `YYYY` or `YYYY-YYYY` |
+| `--type` | Publication-type filter (`review`, `trial`, `meta-analysis`, `randomized`, `case-report`, or custom) |
+| `--api-key` | NCBI API key override |
 
-# JSON output with full details
-pubmed fetch 38123456 --json
-```
+### Input Validation
 
-### Citations
+The CLI now fails fast for common mistakes:
+- Invalid `--limit` values (`<= 0`) are rejected.
+- Invalid `--sort` values are rejected.
+- Invalid year formats and descending ranges are rejected.
+- Invalid PMIDs (non-digits) are rejected in `fetch`, `cited-by`, `references`, and `related`.
 
-```bash
-# Papers that cite this article
-pubmed cited-by 38123456
+## Production Reliability Notes
 
-# References in this article
-pubmed references 38123456
-
-# Similar articles (with relevance scores)
-pubmed related 38123456
-```
-
-### MeSH Term Lookup
-
-```bash
-# Look up a MeSH term
-pubmed mesh "Fragile X Syndrome"
-
-# JSON output
-pubmed mesh "Electroencephalography" --json
-```
-
-## Global Flags
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--json` | Structured JSON output | `false` |
-| `--limit N` | Maximum results | `20` |
-| `--sort` | Sort: `relevance`, `date`, `cited` | `relevance` |
-| `--year` | Year range filter (e.g., `2020-2025`) | — |
-| `--type` | Publication type: `review`, `trial`, `meta-analysis` | — |
-| `--api-key` | NCBI API key (or `NCBI_API_KEY` env var) | — |
-
-## Examples
-
-### Research Workflow
-
-```bash
-# 1. Find recent reviews on a topic
-pubmed search "fragile x syndrome EEG biomarkers" --type review --year 2020-2025 --json
-
-# 2. Get full details for interesting papers
-pubmed fetch 38123456 --json | jq '{title: .title, doi: .doi, authors: [.authors[].full_name]}'
-
-# 3. Explore citation network
-pubmed cited-by 38123456 --json | jq '.links[].id'
-
-# 4. Find related work
-pubmed related 38123456 --limit 5
-
-# 5. Look up MeSH terms for better searches
-pubmed mesh "Electroencephalography"
-```
-
-### Piping and Scripting
-
-```bash
-# Search → Fetch pipeline
-pubmed search "CRISPR therapy" --json | jq -r '.ids[:5][]' | xargs pubmed fetch --json
-
-# Export citations
-pubmed fetch 38123456 37987654 --json > papers.json
-```
+- Shared NCBI client with rate limiting and response-size guards.
+- Automatic retry with backoff for transient NCBI `HTTP 429` responses.
+- UTF-8 safe text truncation in human output.
 
 ## Development
 
-### Prerequisites
-
-- Go 1.21+
-- Make
-
-### Build & Test
-
 ```bash
 # Build
-make build
+go build ./...
 
-# Run unit tests
-make test
+# Test
+go test ./...
 
-# Run integration tests (hits real NCBI API)
-NCBI_API_KEY="your-key" make test-integration
-
-# Lint
-make lint
-
-# Test coverage
-make coverage
+# Vet
+go vet ./...
 ```
 
-### Project Structure
+## Branching Note
 
-```
-pubmed-cli/
-├── cmd/pubmed/          # CLI entry point
-├── internal/
-│   ├── eutils/          # E-utilities HTTP client
-│   │   ├── client.go    # Rate-limited HTTP client
-│   │   ├── search.go    # ESearch
-│   │   ├── fetch.go     # EFetch (XML parsing)
-│   │   ├── link.go      # ELink (citations, references, related)
-│   │   └── types.go     # Shared types
-│   ├── mesh/            # MeSH term lookup
-│   └── output/          # JSON and human-readable formatting
-├── testdata/            # Fixture files for unit tests
-├── Makefile
-└── README.md
-```
-
-### Test Strategy
-
-- **Unit tests** use `net/http/httptest` with canned NCBI responses in `testdata/`
-- **Integration tests** (`//go:build integration`) hit the real NCBI API
-- TDD approach: tests written before implementation
+- `main`: non-AI command set listed above.
+- `ai-features`: historical branch for AI/LLM workflows.
 
 ## License
 
 MIT
-
-## NCBI E-utilities
-
-This tool uses the [NCBI E-utilities API](https://www.ncbi.nlm.nih.gov/books/NBK25501/). Please respect their [usage guidelines](https://www.ncbi.nlm.nih.gov/books/NBK25497/):
-
-- Include tool name and email in requests (handled automatically)
-- Max 3 requests/second without API key, 10 with key
-- Do not make concurrent requests from a single IP
