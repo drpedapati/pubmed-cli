@@ -19,7 +19,7 @@ Follow this checklist for every release of pubmed-cli.
   - [ ] Version badge updated
 - [ ] **CHANGELOG.md** has entry for new version:
   - [ ] Added section with new features
-  - [ ] Changed section with modifications  
+  - [ ] Changed section with modifications
   - [ ] Fixed section with bug fixes
   - [ ] Date is correct
 - [ ] **Code comments** explain non-obvious logic
@@ -54,11 +54,11 @@ make release
 ### 4. Create GitHub Release
 ```bash
 gh release create vX.Y.Z \
-  pubmed-darwin-arm64 \
-  pubmed-darwin-amd64 \
-  pubmed-linux-amd64 \
-  --title "vX.Y.Z - Release Title" \
-  --notes "## What's New
+pubmed-darwin-arm64 \
+pubmed-darwin-amd64 \
+pubmed-linux-amd64 \
+--title "vX.Y.Z - Release Title" \
+--notes "## What's New
 
 ### Features
 - Feature 1
@@ -110,7 +110,6 @@ git push
 brew update
 brew upgrade pubmed-cli
 pubmed --help
-pubmed qa --help  # If qa command exists
 ```
 
 ## Quick Release Script
