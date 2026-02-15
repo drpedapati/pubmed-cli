@@ -28,6 +28,15 @@ var (
 	flagAPIKey string
 )
 
+const (
+	projectName = "pubmed-cli"
+	projectURL  = "https://github.com/drpedapati/pubmed-cli"
+	issuesURL   = "https://github.com/drpedapati/pubmed-cli/issues"
+)
+
+// version is set at build time via ldflags; defaults to dev builds.
+var version = "dev"
+
 var allowedSorts = map[string]struct{}{
 	"relevance": {},
 	"date":      {},
@@ -42,14 +51,18 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "pubmed",
-	Short: "PubMed E-utilities CLI",
-	Long:  `A command-line interface for searching and retrieving articles from NCBI PubMed using the E-utilities API.`,
+	Short: "pubmed-cli: production-focused PubMed E-utilities CLI",
+	Long:  `pubmed-cli is a production-focused command-line interface for searching and retrieving articles from NCBI PubMed using the E-utilities API.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return validateGlobalFlags(cmd)
 	},
 }
 
 func init() {
+	rootCmd.Version = version
+	rootCmd.SetVersionTemplate(cliBrandingText() + "\n")
+	rootCmd.SetHelpTemplate(rootCmd.HelpTemplate() + cliHelpFooter())
+
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as structured JSON")
 	rootCmd.PersistentFlags().BoolVarP(&flagHuman, "human", "H", false, "Rich colorful terminal output")
 	rootCmd.PersistentFlags().BoolVar(&flagFull, "full", false, "Show full abstract (with --human)")
@@ -67,6 +80,7 @@ func init() {
 	rootCmd.AddCommand(referencesCmd)
 	rootCmd.AddCommand(relatedCmd)
 	rootCmd.AddCommand(meshCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 func outputCfg() output.OutputConfig {
@@ -178,6 +192,14 @@ func validateGlobalFlags(cmd *cobra.Command) error {
 	}
 
 	return nil
+}
+
+func cliBrandingText() string {
+	return fmt.Sprintf("%s %s\nGitHub: %s\nIssues: %s", projectName, version, projectURL, issuesURL)
+}
+
+func cliHelpFooter() string {
+	return fmt.Sprintf("\nVersion: %s\nGitHub: %s\nIssues: %s\n", version, projectURL, issuesURL)
 }
 
 func validatePMID(pmid string) error {
@@ -441,5 +463,13 @@ var meshCmd = &cobra.Command{
 		}
 
 		return output.FormatMeSHRecord(os.Stdout, record, outputCfg())
+	},
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Show version and project links",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Fprintln(cmd.OutOrStdout(), cliBrandingText())
 	},
 }

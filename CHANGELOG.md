@@ -4,27 +4,16 @@ All notable changes to pubmed-cli are documented in this file.
 
 ## [Unreleased]
 
-### Added
-- RIS export support via `--ris FILE` for:
-  - `fetch`
-  - `cited-by`
-  - `references`
-  - `related`
-- RIS records are written in a conservative EndNote/Zotero-compatible format.
+## [0.5.4] - 2026-02-15
 
-### Fixed
-- Prevented runtime panic when link commands are run with invalid limits (for example `--limit -1`).
-- Added global input validation for:
-  - `--limit` (must be greater than 0)
-  - `--sort` (must be one of `relevance`, `date`, `cited`)
-  - `--year` (must be `YYYY` or `YYYY-YYYY` with ascending range)
-- Added strict PMID validation for `fetch`, `cited-by`, `references`, and `related`.
-- Added support for robust comma-separated PMID parsing in `fetch`.
-- Made human-output truncation UTF-8 safe.
-- Added retry/backoff handling for transient NCBI `HTTP 429` responses.
+### Added
+- `pubmed version` command and branded help footer linking to GitHub/issues.
+- Embedded build version support (release builds set `pubmed --version` correctly).
+- Linux `arm64` release artifact published alongside `linux/amd64` for Homebrew.
+- GitHub repository metadata: CI workflow, release-assets workflow, Dependabot, and issue/PR templates.
 
 ### Changed
-- Refreshed all project documentation for production release on non-AI `main` branch.
+- Updated release tooling and docs for macOS and Linux Homebrew distribution.
 
 ## [0.2.0] - 2026-02-05
 

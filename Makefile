@@ -1,18 +1,22 @@
 .PHONY: build test test-integration install lint clean release publish
 
-VERSION := 0.5.1
+# BUILD_VERSION is embedded into the binary (used by `pubmed --version` and `pubmed version`).
+# Release builds should pass BUILD_VERSION like `v0.5.4`.
+BUILD_VERSION ?= dev
 BINARY := pubmed
 PKG := ./cmd/pubmed
+LDFLAGS := -X main.version=$(BUILD_VERSION)
 
 build:
-	go build -o $(BINARY) $(PKG)
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(PKG)
 
 # Cross-compile for release
 release:
-	GOOS=darwin GOARCH=arm64 go build -o $(BINARY)-darwin-arm64 $(PKG)
-	GOOS=darwin GOARCH=amd64 go build -o $(BINARY)-darwin-amd64 $(PKG)
-	GOOS=linux GOARCH=amd64 go build -o $(BINARY)-linux-amd64 $(PKG)
-	@echo "Built binaries for darwin/arm64, darwin/amd64, linux/amd64"
+	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-darwin-arm64 $(PKG)
+	GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-darwin-amd64 $(PKG)
+	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-amd64 $(PKG)
+	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-arm64 $(PKG)
+	@echo "Built binaries for darwin/arm64, darwin/amd64, linux/amd64, linux/arm64"
 
 test:
 	go test -short -count=1 ./...

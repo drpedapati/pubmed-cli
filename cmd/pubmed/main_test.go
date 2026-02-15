@@ -205,3 +205,34 @@ func TestNormalizePMIDArgs(t *testing.T) {
 		t.Fatal("expected invalid PMID error")
 	}
 }
+
+func TestCLIBrandingTextIncludesVersionAndURLs(t *testing.T) {
+	origVersion := version
+	version = "v1.2.3-test"
+	t.Cleanup(func() { version = origVersion })
+
+	out := cliBrandingText()
+	if !strings.Contains(out, "pubmed-cli v1.2.3-test") {
+		t.Fatalf("branding output missing version: %q", out)
+	}
+	if !strings.Contains(out, projectURL) {
+		t.Fatalf("branding output missing project URL: %q", out)
+	}
+	if !strings.Contains(out, issuesURL) {
+		t.Fatalf("branding output missing issues URL: %q", out)
+	}
+}
+
+func TestCLIHelpFooterIncludesIssueLocation(t *testing.T) {
+	origVersion := version
+	version = "v9.9.9-test"
+	t.Cleanup(func() { version = origVersion })
+
+	footer := cliHelpFooter()
+	if !strings.Contains(footer, "Version: v9.9.9-test") {
+		t.Fatalf("help footer missing version: %q", footer)
+	}
+	if !strings.Contains(footer, "Issues: "+issuesURL) {
+		t.Fatalf("help footer missing issues URL: %q", footer)
+	}
+}

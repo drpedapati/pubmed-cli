@@ -1,5 +1,9 @@
 # pubmed-cli
 
+[![CI](https://github.com/drpedapati/pubmed-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/drpedapati/pubmed-cli/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/drpedapati/pubmed-cli)](https://github.com/drpedapati/pubmed-cli/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+
 `pubmed-cli` is a command-line interface for NCBI PubMed E-utilities.
 
 It focuses on deterministic, scriptable literature workflows on the `main` branch:
@@ -12,14 +16,23 @@ It focuses on deterministic, scriptable literature workflows on the `main` branc
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew tap henrybloomingdale/tools
+brew install pubmed-cli
+```
+
+### Go
+
 ```bash
 go install github.com/henrybloomingdale/pubmed-cli/cmd/pubmed@latest
 ```
 
-Build from source:
+### Build from source
 
 ```bash
-git clone https://github.com/henrybloomingdale/pubmed-cli.git
+git clone https://github.com/drpedapati/pubmed-cli.git
 cd pubmed-cli
 go build -o pubmed ./cmd/pubmed
 ```
@@ -106,6 +119,19 @@ go test ./...
 # Vet
 go vet ./...
 ```
+
+Additional development docs:
+- `docs/development/TDD.md`
+- `docs/development/CODE_REVIEW.md`
+- `docs/development/UX_TESTING.md`
+- `docs/homebrew.md`
+- `RELEASING.md`
+
+Repository metadata:
+- `CONTRIBUTING.md`
+- `SECURITY.md`
+- `.github/workflows/ci.yml`
+- `.github/workflows/release-assets.yml`
 
 ## Branching Note
 
