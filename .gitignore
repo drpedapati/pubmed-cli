@@ -23,3 +23,10 @@ pubmed-linux-*
 
 # Local planning artifacts
 plans/
+
+# Local verification artifacts
+fxs_reference_verification.tsv
+fxs_references_strict.json
+fxs_references_strict.ris
+fxs_references_verified.json
+fxs_references_verified.ris
