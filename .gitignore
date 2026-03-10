@@ -30,3 +30,8 @@ fxs_references_strict.json
 fxs_references_strict.ris
 fxs_references_verified.json
 fxs_references_verified.ris
+
+# Refcheck generated outputs
+testdata/*.ris
+testdata/*.csv
+testdata/*.json
