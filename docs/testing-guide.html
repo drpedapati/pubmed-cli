@@ -96,6 +96,9 @@ pubmed --help</code><button class="copy-btn" onclick="copyCmd(this)">Copy</butto
     <pre><code>pubmed related 38000001 --limit 2 --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
     <pre><code>pubmed related 38000001 --limit 5 --ris /tmp/related.ris</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
     <pre><code>pubmed mesh "depression" --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed refcheck testdata/fxs_biomarkers_manuscript.docx --human</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed refcheck testdata/fxs_biomarkers_manuscript.docx --json</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed refcheck testdata/fxs_biomarkers_manuscript.docx --audit-text --csv-out /tmp/refcheck.csv --ris-out /tmp/refcheck.ris</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
   </div>
 
   <h2>Validation Paths (Must Fail Cleanly)</h2>
@@ -106,6 +109,8 @@ pubmed --help</code><button class="copy-btn" onclick="copyCmd(this)">Copy</butto
     <pre><code>pubmed fetch abc123</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
     <pre><code>pubmed search autism --ris /tmp/search.ris</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
     <pre><code>pubmed mesh depression --ris /tmp/mesh.ris</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed refcheck nonexistent.docx        # Should fail: file not found</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
+    <pre><code>pubmed refcheck                          # Should fail: missing argument</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
   </div>
 
   <h2>Expected Outcomes</h2>
@@ -117,6 +122,9 @@ pubmed --help</code><button class="copy-btn" onclick="copyCmd(this)">Copy</butto
     <tr><td>Invalid PMID</td><td>Error indicates PMIDs must be digits</td></tr>
     <tr><td>Comma-separated PMIDs</td><td>Fetch succeeds with parsed IDs</td></tr>
     <tr><td>RIS command scope</td><td>`--ris` rejected on search/mesh and accepted on fetch/link commands</td></tr>
+    <tr><td>refcheck with valid .docx</td><td>Verification report printed (human/JSON)</td></tr>
+    <tr><td>refcheck with missing file</td><td>Clean error: file not found</td></tr>
+    <tr><td>refcheck with no args</td><td>Usage error: missing required argument</td></tr>
   </table>
 
   <h2>CSV/JSON Export Checks</h2>
@@ -126,7 +134,7 @@ pubmed --help</code><button class="copy-btn" onclick="copyCmd(this)">Copy</butto
     <pre><code>pubmed fetch 38000001 38000002 --json --ris /tmp/fetch.ris</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></pre>
   </div>
 
-  <p class="muted">Updated for production hardening pass on 2026-02-13.</p>
+  <p class="muted">Updated for refcheck test cases on 2026-03-09.</p>
 
   <script>
     function copyCmd(btn) {

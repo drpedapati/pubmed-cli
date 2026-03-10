@@ -14,6 +14,7 @@ Commands:
 - `references`
 - `related`
 - `mesh`
+- `refcheck`
 
 Out of scope on `main`:
 - AI synthesis and QA command paths (maintained separately on `ai-features`).
@@ -36,6 +37,9 @@ Out of scope on `main`:
 - `internal/mesh`
 - MeSH lookup adapter.
 
+- `internal/refcheck`
+- Reference verification engine: parse, score, resolve, hallucinate, audit, and report modules.
+
 - `internal/output`
 - `json`, `human`, `csv`, and `ris` output paths.
 
@@ -49,6 +53,8 @@ Out of scope on `main`:
   - year format/range validation
   - PMID digit validation
   - RIS export command-scope validation (`fetch` + link commands only)
+  - `refcheck` validates input file exists and `docx-review` binary is on PATH
+- Tiered PubMed query strategy degrades gracefully through 5 tiers.
 - UTF-8 safe truncation in human output mode.
 - Defensive handling for empty link/article outputs.
 
@@ -59,6 +65,7 @@ Out of scope on `main`:
 - Link commands return source id plus linked pmids (+score for related when available).
 - `mesh --json` returns UI, name, scope note, tree numbers, and entry terms.
 - `--ris FILE` writes EndNote/Zotero-compatible citation records for `fetch`, `cited-by`, `references`, and `related`.
+- `refcheck --json` returns a per-reference verification report with status, optional audit results, CSV and RIS export.
 
 ## 5. Testing Strategy
 
@@ -74,6 +81,7 @@ High-value tests include:
 - UTF-8-safe human output truncation
 - malformed flag rejection
 - RIS file output generation and compatibility formatting
+- `internal/refcheck` unit tests for parse, score, resolve, hallucinate, audit, and report modules using httptest mock servers
 
 ## 6. Operational Risks
 

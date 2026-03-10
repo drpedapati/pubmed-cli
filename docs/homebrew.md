@@ -41,6 +41,12 @@ brew test pubmed-cli
 pubmed --help
 ```
 
+## Version notes
+
+- **v0.6.0**: Adds the `refcheck` subcommand. `refcheck` requires `docx-review` as a
+  runtime dependency — it is not bundled in the Homebrew formula, so users must install
+  it separately.
+
 ## Example formula shape
 
 ```ruby

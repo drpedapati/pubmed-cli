@@ -71,6 +71,32 @@ pubmed mesh depression --ris /tmp/mesh.ris
 pubmed mesh depression --human
 ```
 
+## refcheck Subcommand (v0.6.0)
+
+Date: 2026-03-09
+
+### Flows Tested
+
+- `pubmed refcheck manuscript.docx --human` — displays verification summary with color-coded statuses
+- `pubmed refcheck manuscript.docx --json` — structured JSON report for programmatic use
+- `pubmed refcheck manuscript.docx --audit-text --human` — includes in-text citation audit
+- `pubmed refcheck manuscript.docx --csv-out report.csv --ris-out verified.ris` — export paths
+
+### Error Handling Verified
+
+- Missing file: clean error message, no panic
+- Missing docx-review binary: clear error with install guidance
+- No arguments: usage shown
+- Document with no references section: descriptive error
+- PubMed API failures: graceful degradation to NOT_IN_PUBMED
+
+### Output Quality
+
+- Human mode: color-coded verification statuses, correction details, summary statistics
+- JSON mode: complete structured report suitable for agent consumption
+- CSV export: one row per reference with all verification metadata
+- RIS export: only verified references exported
+
 ## Recommendation
 
 Release-ready for production use on the current non-AI command set, with the caveat that live NCBI rate-limiting behavior should continue to be monitored in operational usage.
