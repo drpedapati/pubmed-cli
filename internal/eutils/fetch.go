@@ -261,6 +261,7 @@ func convertArticle(pa pubmedArticle) Article {
 		if len(au.AffiliationInfo) > 0 {
 			author.Affiliation = au.AffiliationInfo[0].Affiliation
 		}
+		author.DisplayName = author.FullName()
 		a.Authors = append(a.Authors, author)
 	}
 
