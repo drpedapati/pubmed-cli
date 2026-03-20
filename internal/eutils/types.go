@@ -42,6 +42,7 @@ type Author struct {
 	LastName       string `json:"last_name"`
 	ForeName       string `json:"fore_name"`
 	Initials       string `json:"initials"`
+	DisplayName    string `json:"display_name"`
 	CollectiveName string `json:"collective_name,omitempty"`
 	Affiliation    string `json:"affiliation,omitempty"`
 }
