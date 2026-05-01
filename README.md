@@ -20,14 +20,14 @@ It focuses on deterministic, scriptable literature workflows on the `main` branc
 ### Homebrew (macOS and Linux)
 
 ```bash
-brew tap henrybloomingdale/tools
+brew tap drpedapati/tools
 brew install pubmed-cli
 ```
 
 ### Go
 
 ```bash
-go install github.com/henrybloomingdale/pubmed-cli/cmd/pubmed@latest
+go install github.com/drpedapati/pubmed-cli/cmd/pubmed@latest
 ```
 
 ### Build from source
