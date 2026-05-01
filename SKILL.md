@@ -1,7 +1,7 @@
 ---
 name: pubmed-cli
 description: "Search PubMed, fetch article metadata, traverse citation graphs, and look up MeSH terms from the command line. Use when: (1) Searching PubMed with Boolean/MeSH queries, (2) Fetching article details by PMID (abstract, authors, DOI, MeSH terms), (3) Finding papers that cite a given article (cited-by), (4) Finding papers cited by a given article (references), (5) Finding related articles with relevance scores, (6) Looking up MeSH vocabulary (tree numbers, scope notes), (7) Exporting citations in RIS format for Zotero/EndNote, (8) Building reproducible literature review workflows, (9) Verifying document references against PubMed for accuracy and detecting fabricated citations."
-metadata: {"nanobot":{"emoji":"🔬","requires":{"bins":["pubmed"]},"install":[{"id":"brew","kind":"brew","formula":"henrybloomingdale/tools/pubmed-cli","bins":["pubmed"],"label":"Install pubmed-cli (brew)"}]}}
+metadata: {"nanobot":{"emoji":"🔬","requires":{"bins":["pubmed"]},"install":[{"id":"brew","kind":"brew","formula":"drpedapati/tools/pubmed-cli","bins":["pubmed"],"label":"Install pubmed-cli (brew)"}]}}
 ---
 
 # pubmed-cli
@@ -11,7 +11,7 @@ PubMed from your terminal. Search, fetch, cite, traverse — built for humans an
 ## Install
 
 ```bash
-brew install henrybloomingdale/tools/pubmed-cli
+brew install drpedapati/tools/pubmed-cli
 ```
 
 Binary: `/opt/homebrew/bin/pubmed`
