@@ -21,7 +21,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build release binaries
-        run: make release
+        run: make release BUILD_VERSION=${{ github.ref_name }}
 
       - name: Generate checksums
         run: sha256sum pubmed-* > checksums.txt
